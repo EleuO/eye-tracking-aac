@@ -160,6 +160,9 @@ class AdvancedEyeTracker {
             webgazer.clearData();
         }
         
+        // キャリブレーション用のガゼリスナーを設定
+        this.setupCalibrationGazeListener();
+        
         await this.showCalibrationPoint();
     }
     
@@ -183,6 +186,11 @@ class AdvancedEyeTracker {
         pointElement.style.left = (point.x * 100) + '%';
         pointElement.style.top = (point.y * 100) + '%';
         
+        // 視線距離表示エリアを追加
+        const distanceIndicator = document.createElement('div');
+        distanceIndicator.className = 'distance-indicator';
+        pointElement.appendChild(distanceIndicator);
+        
         this.calibrationPointsContainer.appendChild(pointElement);
         
         // ステップを更新
@@ -191,23 +199,167 @@ class AdvancedEyeTracker {
         // 音声フィードバック
         this.speakCalibrationInstruction(this.currentCalibrationIndex + 1);
         
-        // クリックイベントまたは自動進行
-        let timeoutId;
-        const proceed = () => {
-            clearTimeout(timeoutId);
-            this.recordCalibrationPoint(point);
-            pointElement.classList.add('completed');
-            
-            setTimeout(() => {
-                this.currentCalibrationIndex++;
-                this.showCalibrationPoint();
-            }, 500);
+        // キャリブレーション中のガゼポイント表示を有効化
+        this.showCalibrationGazePoint();
+        
+        // インタラクティブな進行システム
+        this.startInteractiveCalibration(point, pointElement);
+    }
+    
+    setupCalibrationGazeListener() {
+        // キャリブレーション中の視線データ初期化
+        this.calibrationGazeData = {
+            currentPoint: null,
+            gazeDistance: Infinity,
+            isGazeStable: false,
+            stableStartTime: null,
+            requiredStableTime: 1000 // 1秒間安定
         };
+    }
+    
+    showCalibrationGazePoint() {
+        if (this.gazePoint) {
+            this.gazePoint.classList.add('active', 'calibration-mode');
+            this.gazePoint.style.background = '#ff6b6b';
+            this.gazePoint.style.borderColor = '#ffffff';
+        }
+    }
+    
+    hideCalibrationGazePoint() {
+        if (this.gazePoint) {
+            this.gazePoint.classList.remove('calibration-mode');
+            this.gazePoint.style.background = '';
+            this.gazePoint.style.borderColor = '';
+        }
+    }
+    
+    processCalibrationGaze(gazeData) {
+        if (!this.calibrationGazeData.currentPoint) return;
         
-        pointElement.addEventListener('click', proceed);
+        const point = this.calibrationGazeData.currentPoint;
+        const targetX = point.x * window.innerWidth;
+        const targetY = point.y * window.innerHeight;
         
-        // 3秒後に自動進行
-        timeoutId = setTimeout(proceed, 3000);
+        // 視線とターゲットの距離を計算
+        const distance = Math.sqrt(
+            Math.pow(gazeData.x - targetX, 2) + 
+            Math.pow(gazeData.y - targetY, 2)
+        );
+        
+        this.calibrationGazeData.gazeDistance = distance;
+        
+        // 視视的フィードバックを更新
+        this.updateCalibrationFeedback(distance);
+        
+        // 視線が十分近いかチェック（50px以内）
+        const isNearTarget = distance < 50;
+        
+        if (isNearTarget) {
+            if (!this.calibrationGazeData.isGazeStable) {
+                this.calibrationGazeData.isGazeStable = true;
+                this.calibrationGazeData.stableStartTime = Date.now();
+            }
+            
+            const stableDuration = Date.now() - this.calibrationGazeData.stableStartTime;
+            const progress = Math.min(stableDuration / this.calibrationGazeData.requiredStableTime, 1);
+            
+            this.updateCalibrationProgress(progress);
+            
+            // 十分な時間安定したら進行
+            if (progress >= 1) {
+                this.proceedToNextCalibrationPoint();
+            }
+        } else {
+            this.calibrationGazeData.isGazeStable = false;
+            this.calibrationGazeData.stableStartTime = null;
+            this.updateCalibrationProgress(0);
+        }
+    }
+    
+    updateCalibrationFeedback(distance) {
+        const pointElement = document.querySelector('.calibration-point');
+        const distanceIndicator = pointElement?.querySelector('.distance-indicator');
+        
+        if (!pointElement || !distanceIndicator) return;
+        
+        // 距離に応じて点の色を変更
+        if (distance < 30) {
+            pointElement.style.background = '#27ae60'; // 緑：非常に近い
+        } else if (distance < 50) {
+            pointElement.style.background = '#f39c12'; // オレンジ：近い
+        } else if (distance < 100) {
+            pointElement.style.background = '#e74c3c'; // 赤：遠い
+        } else {
+            pointElement.style.background = '#95a5a6'; // グレー：非常に遠い
+        }
+        
+        // 距離情報を表示
+        distanceIndicator.textContent = Math.round(distance) + 'px';
+        distanceIndicator.style.color = distance < 50 ? '#27ae60' : '#e74c3c';
+    }
+    
+    updateCalibrationProgress(progress) {
+        const pointElement = document.querySelector('.calibration-point');
+        if (!pointElement) return;
+        
+        // プログレスリングを更新または作成
+        let progressRing = pointElement.querySelector('.progress-ring');
+        if (!progressRing) {
+            progressRing = document.createElement('div');
+            progressRing.className = 'progress-ring';
+            progressRing.innerHTML = `
+                <svg width="40" height="40">
+                    <circle cx="20" cy="20" r="15" stroke="#ffffff" stroke-width="3" fill="none" opacity="0.3"/>
+                    <circle cx="20" cy="20" r="15" stroke="#ffffff" stroke-width="3" fill="none" 
+                            stroke-dasharray="94.25" stroke-dashoffset="94.25" class="progress-circle"/>
+                </svg>
+            `;
+            pointElement.appendChild(progressRing);
+        }
+        
+        const progressCircle = progressRing.querySelector('.progress-circle');
+        if (progressCircle) {
+            const circumference = 94.25;
+            const offset = circumference - (progress * circumference);
+            progressCircle.style.strokeDashoffset = offset;
+        }
+    }
+    
+    startInteractiveCalibration(point, pointElement) {
+        this.calibrationGazeData.currentPoint = point;
+        
+        // フォールバッククリックイベント
+        pointElement.addEventListener('click', () => {
+            this.proceedToNextCalibrationPoint();
+        });
+        
+        // 10秒後に自動進行（フォールバック）
+        setTimeout(() => {
+            if (this.calibrationGazeData.currentPoint === point) {
+                this.proceedToNextCalibrationPoint();
+            }
+        }, 10000);
+    }
+    
+    proceedToNextCalibrationPoint() {
+        const point = this.calibrationGazeData.currentPoint;
+        if (!point) return;
+        
+        this.recordCalibrationPoint(point);
+        
+        const pointElement = document.querySelector('.calibration-point');
+        if (pointElement) {
+            pointElement.classList.add('completed');
+        }
+        
+        // 進行音
+        this.playProgressSound();
+        
+        setTimeout(() => {
+            this.currentCalibrationIndex++;
+            this.calibrationGazeData.currentPoint = null;
+            this.showCalibrationPoint();
+        }, 800);
     }
     
     recordCalibrationPoint(point) {
@@ -224,10 +376,33 @@ class AdvancedEyeTracker {
         }
     }
     
+    playProgressSound() {
+        try {
+            const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            const oscillator = audioContext.createOscillator();
+            const gainNode = audioContext.createGain();
+            
+            oscillator.connect(gainNode);
+            gainNode.connect(audioContext.destination);
+            
+            oscillator.frequency.setValueAtTime(600, audioContext.currentTime);
+            gainNode.gain.setValueAtTime(0.05, audioContext.currentTime);
+            gainNode.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.2);
+            
+            oscillator.start(audioContext.currentTime);
+            oscillator.stop(audioContext.currentTime + 0.2);
+        } catch (error) {
+            // 音声再生できない場合は無視
+        }
+    }
+    
     async completeCalibration() {
         this.isCalibrating = false;
         this.isCalibrated = true;
         this.isTracking = true;
+        
+        // キャリブレーションモードのガゼポイントを非表示
+        this.hideCalibrationGazePoint();
         
         this.calibrationOverlay.classList.remove('active');
         
@@ -252,68 +427,312 @@ class AdvancedEyeTracker {
     }
     
     async testCalibrationAccuracy() {
-        // 簡易的な精度テスト
         return new Promise((resolve) => {
-            let testPoints = 0;
-            let accuratePoints = 0;
+            this.showAccuracyTestOverlay();
+            
+            const testData = {
+                testPoints: [],
+                currentIndex: 0,
+                measurements: [],
+                startTime: Date.now()
+            };
+            
+            // 精度テスト用の9点を生成
             const testPositions = [
-                { x: 0.2, y: 0.2 },
-                { x: 0.8, y: 0.2 },
-                { x: 0.5, y: 0.5 },
-                { x: 0.2, y: 0.8 },
-                { x: 0.8, y: 0.8 }
+                { x: 0.15, y: 0.15 }, { x: 0.5, y: 0.15 }, { x: 0.85, y: 0.15 },
+                { x: 0.15, y: 0.5 },  { x: 0.5, y: 0.5 },  { x: 0.85, y: 0.5 },
+                { x: 0.15, y: 0.85 }, { x: 0.5, y: 0.85 }, { x: 0.85, y: 0.85 }
             ];
             
-            const testGaze = (data) => {
-                if (testPoints < testPositions.length) {
-                    const expectedPos = testPositions[testPoints];
-                    const expectedX = expectedPos.x * window.innerWidth;
-                    const expectedY = expectedPos.y * window.innerHeight;
+            testData.testPoints = testPositions;
+            
+            this.runAccuracyTest(testData).then((results) => {
+                this.hideAccuracyTestOverlay();
+                this.showAccuracyResults(results);
+                resolve(results.overallAccuracy);
+            });
+        });
+    }
+    
+    showAccuracyTestOverlay() {
+        const overlay = document.createElement('div');
+        overlay.id = 'accuracyTestOverlay';
+        overlay.className = 'accuracy-test-overlay';
+        overlay.innerHTML = `
+            <div class="accuracy-test-content">
+                <h2>精度テスト</h2>
+                <p>赤い点を順番に見つめてください</p>
+                <div class="accuracy-progress">
+                    <span id="accuracyStep">1</span> / <span id="accuracyTotal">9</span>
+                </div>
+                <div class="accuracy-points-container" id="accuracyPointsContainer"></div>
+                <button id="skipAccuracyTest" class="control-btn">スキップ</button>
+            </div>
+        `;
+        document.body.appendChild(overlay);
+        
+        document.getElementById('skipAccuracyTest').addEventListener('click', () => {
+            this.skipAccuracyTest();
+        });
+    }
+    
+    hideAccuracyTestOverlay() {
+        const overlay = document.getElementById('accuracyTestOverlay');
+        if (overlay) {
+            overlay.remove();
+        }
+    }
+    
+    async runAccuracyTest(testData) {
+        return new Promise((resolve) => {
+            const results = {
+                measurements: [],
+                overallAccuracy: 0,
+                averageDistance: 0,
+                worstDistance: 0,
+                bestDistance: Infinity
+            };
+            
+            const testNextPoint = async () => {
+                if (testData.currentIndex >= testData.testPoints.length) {
+                    // テスト完了
+                    this.calculateAccuracyResults(testData.measurements, results);
+                    resolve(results);
+                    return;
+                }
+                
+                const point = testData.testPoints[testData.currentIndex];
+                await this.showAccuracyTestPoint(point, testData.currentIndex + 1);
+                
+                // 精度測定を開始
+                this.measurePointAccuracy(point).then((measurement) => {
+                    testData.measurements.push(measurement);
+                    testData.currentIndex++;
                     
+                    setTimeout(() => {
+                        testNextPoint();
+                    }, 500);
+                });
+            };
+            
+            testNextPoint();
+        });
+    }
+    
+    async showAccuracyTestPoint(point, step) {
+        return new Promise((resolve) => {
+            const container = document.getElementById('accuracyPointsContainer');
+            const stepElement = document.getElementById('accuracyStep');
+            
+            // 前のポイントを削除
+            container.innerHTML = '';
+            
+            // ステップ更新
+            if (stepElement) {
+                stepElement.textContent = step;
+            }
+            
+            // 新しいポイントを作成
+            const pointElement = document.createElement('div');
+            pointElement.className = 'accuracy-test-point';
+            pointElement.style.left = (point.x * 100) + '%';
+            pointElement.style.top = (point.y * 100) + '%';
+            
+            container.appendChild(pointElement);
+            
+            // 1秒待ってから測定開始
+            setTimeout(resolve, 1000);
+        });
+    }
+    
+    async measurePointAccuracy(point) {
+        return new Promise((resolve) => {
+            const measurements = [];
+            const targetX = point.x * window.innerWidth;
+            const targetY = point.y * window.innerHeight;
+            const measurementDuration = 1500; // 1.5秒間測定
+            const startTime = Date.now();
+            
+            const gazeListener = (data) => {
+                if (Date.now() - startTime > measurementDuration) {
+                    // 測定終了
+                    webgazer.removeGazeListener(gazeListener);
+                    
+                    if (measurements.length === 0) {
+                        resolve({ distance: 999, accuracy: 0, sampleCount: 0 });
+                        return;
+                    }
+                    
+                    // 結果を計算
+                    const avgDistance = measurements.reduce((sum, m) => sum + m, 0) / measurements.length;
+                    const accuracy = Math.max(0, 1 - (avgDistance / 200)); // 200pxで精度ゼロ
+                    
+                    resolve({
+                        distance: avgDistance,
+                        accuracy: accuracy,
+                        sampleCount: measurements.length,
+                        targetX: targetX,
+                        targetY: targetY
+                    });
+                    return;
+                }
+                
+                if (data && typeof data.x === 'number' && typeof data.y === 'number') {
                     const distance = Math.sqrt(
-                        Math.pow(data.x - expectedX, 2) + 
-                        Math.pow(data.y - expectedY, 2)
+                        Math.pow(data.x - targetX, 2) + 
+                        Math.pow(data.y - targetY, 2)
                     );
-                    
-                    if (distance < 100) { // 100px以内なら正確
-                        accuratePoints++;
-                    }
-                    
-                    testPoints++;
-                    
-                    if (testPoints >= testPositions.length) {
-                        webgazer.removeGazeListener(testGaze);
-                        resolve(accuratePoints / testPositions.length);
-                    }
+                    measurements.push(distance);
                 }
             };
             
             if (typeof webgazer !== 'undefined') {
-                webgazer.setGazeListener(testGaze);
-                
-                // タイムアウト
-                setTimeout(() => {
-                    webgazer.removeGazeListener(testGaze);
-                    resolve(0.5); // デフォルト値
-                }, 5000);
+                webgazer.setGazeListener(gazeListener);
             } else {
-                resolve(0.5);
+                resolve({ distance: 999, accuracy: 0, sampleCount: 0 });
             }
         });
     }
     
+    calculateAccuracyResults(measurements, results) {
+        if (measurements.length === 0) {
+            results.overallAccuracy = 0;
+            results.averageDistance = 999;
+            return;
+        }
+        
+        results.measurements = measurements;
+        
+        // 平均精度を計算
+        const totalAccuracy = measurements.reduce((sum, m) => sum + m.accuracy, 0);
+        results.overallAccuracy = totalAccuracy / measurements.length;
+        
+        // 平均距離を計算
+        const totalDistance = measurements.reduce((sum, m) => sum + m.distance, 0);
+        results.averageDistance = totalDistance / measurements.length;
+        
+        // 最高・最低距離
+        results.worstDistance = Math.max(...measurements.map(m => m.distance));
+        results.bestDistance = Math.min(...measurements.map(m => m.distance));
+    }
+    
+    showAccuracyResults(results) {
+        const resultsOverlay = document.createElement('div');
+        resultsOverlay.className = 'accuracy-results-overlay';
+        
+        const accuracyPercent = (results.overallAccuracy * 100).toFixed(1);
+        const avgDistance = Math.round(results.averageDistance);
+        
+        let qualityRating = '低';
+        let qualityColor = '#e74c3c';
+        
+        if (results.overallAccuracy >= 0.8) {
+            qualityRating = '優秀';
+            qualityColor = '#27ae60';
+        } else if (results.overallAccuracy >= 0.6) {
+            qualityRating = '良好';
+            qualityColor = '#f39c12';
+        } else if (results.overallAccuracy >= 0.4) {
+            qualityRating = '普通';
+            qualityColor = '#e67e22';
+        }
+        
+        resultsOverlay.innerHTML = `
+            <div class="accuracy-results-content">
+                <h2>キャリブレーション精度レポート</h2>
+                <div class="accuracy-score" style="color: ${qualityColor}">
+                    ${accuracyPercent}% (${qualityRating})
+                </div>
+                <div class="accuracy-details">
+                    <div class="accuracy-metric">
+                        <span class="metric-label">平均距離:</span>
+                        <span class="metric-value">${avgDistance}px</span>
+                    </div>
+                    <div class="accuracy-metric">
+                        <span class="metric-label">最高精度:</span>
+                        <span class="metric-value">${Math.round(results.bestDistance)}px</span>
+                    </div>
+                    <div class="accuracy-metric">
+                        <span class="metric-label">最低精度:</span>
+                        <span class="metric-value">${Math.round(results.worstDistance)}px</span>
+                    </div>
+                </div>
+                <div class="accuracy-recommendation">
+                    ${this.getAccuracyRecommendation(results.overallAccuracy)}
+                </div>
+                <div class="accuracy-actions">
+                    <button id="retryCalibration" class="primary-btn">再キャリブレーション</button>
+                    <button id="continueWithCurrentCalibration" class="secondary-btn">このまま続行</button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(resultsOverlay);
+        
+        // イベントリスナーを設定
+        document.getElementById('retryCalibration').addEventListener('click', () => {
+            resultsOverlay.remove();
+            this.resetCalibration();
+            setTimeout(() => this.startCalibration(), 500);
+        });
+        
+        document.getElementById('continueWithCurrentCalibration').addEventListener('click', () => {
+            resultsOverlay.remove();
+        });
+        
+        // 10秒後に自動で続行
+        setTimeout(() => {
+            if (document.body.contains(resultsOverlay)) {
+                resultsOverlay.remove();
+            }
+        }, 10000);
+    }
+    
+    getAccuracyRecommendation(accuracy) {
+        if (accuracy >= 0.8) {
+            return '優秀な精度です。視線追跡が正確に動作します。';
+        } else if (accuracy >= 0.6) {
+            return '良好な精度です。ほとんどの操作で問題ありません。';
+        } else if (accuracy >= 0.4) {
+            return '普通の精度です。使用可能ですが、再キャリブレーションを推奨します。';
+        } else {
+            return '精度が低いです。再キャリブレーションを強く推奨します。';
+        }
+    }
+    
+    skipAccuracyTest() {
+        this.hideAccuracyTestOverlay();
+        // デフォルト精度で続行
+        return Promise.resolve(0.7);
+    }
+    
     cancelCalibration() {
         this.isCalibrating = false;
+        this.hideCalibrationGazePoint();
         this.calibrationOverlay.classList.remove('active');
+        this.calibrationGazeData = null;
         window.cameraManager?.updateStatus('キャリブレーションがキャンセルされました', 'connected');
     }
     
     resetCalibration() {
         this.isCalibrated = false;
         this.isTracking = false;
+        this.isCalibrating = false;
         this.currentCalibrationIndex = 0;
         this.hideGazePoint();
+        this.hideCalibrationGazePoint();
         this.disableInterface();
+        
+        // 精度テスト関連のオーバーレイを削除
+        const accuracyOverlay = document.getElementById('accuracyTestOverlay');
+        if (accuracyOverlay) {
+            accuracyOverlay.remove();
+        }
+        
+        const resultsOverlay = document.querySelector('.accuracy-results-overlay');
+        if (resultsOverlay) {
+            resultsOverlay.remove();
+        }
         
         if (typeof webgazer !== 'undefined') {
             webgazer.clearData();
@@ -347,11 +766,16 @@ class AdvancedEyeTracker {
             this.smoothedGaze = data;
         }
         
-        // ガゼポイント更新
+        // ガゼポイント更新（通常時とキャリブレーション時両方）
         this.updateGazePoint(this.smoothedGaze);
         
-        // 文字選択処理
-        this.processCharacterSelection(this.smoothedGaze);
+        // キャリブレーション中の処理
+        if (this.isCalibrating) {
+            this.processCalibrationGaze(this.smoothedGaze);
+        } else {
+            // 文字選択処理
+            this.processCharacterSelection(this.smoothedGaze);
+        }
     }
     
     applySmoothingFilter(newData) {
