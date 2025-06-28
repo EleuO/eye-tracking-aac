@@ -213,8 +213,15 @@ class AdvancedEyeTracker {
             gazeDistance: Infinity,
             isGazeStable: false,
             stableStartTime: null,
-            requiredStableTime: 1000 // 1秒間安定
+            requiredStableTime: 2000, // 2秒間安定（より厳密に）
+            accuracyThreshold: 60, // 60px以内で安定判定
+            progressLocked: false,
+            gazeHistory: [], // 視線履歴
+            lastValidGaze: null
         };
+        
+        // WebGazerのガゼリスナーを強制的に設定
+        this.ensureGazeListener();
     }
     
     showCalibrationGazePoint() {
@@ -233,8 +240,139 @@ class AdvancedEyeTracker {
         }
     }
     
+    // 新しいメソッド: 視線データの有効性をチェック
+    isValidGazeData(gazeData) {
+        if (!gazeData || typeof gazeData.x !== 'number' || typeof gazeData.y !== 'number') {
+            return false;
+        }
+        
+        // 画面範囲内かチェック
+        if (gazeData.x < 0 || gazeData.x > window.innerWidth || 
+            gazeData.y < 0 || gazeData.y > window.innerHeight) {
+            return false;
+        }
+        
+        // 異常な値のチェック
+        if (gazeData.x === 0 && gazeData.y === 0) {
+            return false;
+        }
+        
+        // 前回の視線と比較して異常なジャンプを検出
+        if (this.calibrationGazeData.lastValidGaze) {
+            const lastGaze = this.calibrationGazeData.lastValidGaze;
+            const jumpDistance = Math.sqrt(
+                Math.pow(gazeData.x - lastGaze.x, 2) + 
+                Math.pow(gazeData.y - lastGaze.y, 2)
+            );
+            
+            // 300px以上の急激な移動は異常とみなす
+            if (jumpDistance > 300) {
+                console.log(`異常な視線ジャンプを検出: ${Math.round(jumpDistance)}px`);
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    // 新しいメソッド: 視線履歴を更新
+    updateGazeHistory(gazeData, distance) {
+        const timestamp = Date.now();
+        this.calibrationGazeData.gazeHistory.push({
+            x: gazeData.x,
+            y: gazeData.y,
+            distance: distance,
+            timestamp: timestamp
+        });
+        
+        // 履歴は直近5秒分だけ保持
+        const fiveSecondsAgo = timestamp - 5000;
+        this.calibrationGazeData.gazeHistory = this.calibrationGazeData.gazeHistory.filter(
+            entry => entry.timestamp > fiveSecondsAgo
+        );
+    }
+    
+    // 新しいメソッド: 視線安定性を厳密にチェック
+    checkGazeStability(currentDistance) {
+        const threshold = this.calibrationGazeData.accuracyThreshold;
+        const history = this.calibrationGazeData.gazeHistory;
+        
+        // 現在の距離が闾値以内か
+        if (currentDistance > threshold) {
+            return false;
+        }
+        
+        // 過去1秒間のデータをチェック
+        const oneSecondAgo = Date.now() - 1000;
+        const recentHistory = history.filter(entry => entry.timestamp > oneSecondAgo);
+        
+        // 十分なデータポイントがあるか（10Hzで収集していると仮定）
+        if (recentHistory.length < 8) {
+            return false;
+        }
+        
+        // 過去1秒間の平均距離が闾値以内か
+        const averageDistance = recentHistory.reduce((sum, entry) => sum + entry.distance, 0) / recentHistory.length;
+        if (averageDistance > threshold) {
+            return false;
+        }
+        
+        // 大きな変動がないかチェック
+        const maxDistance = Math.max(...recentHistory.map(entry => entry.distance));
+        const minDistance = Math.min(...recentHistory.map(entry => entry.distance));
+        const variability = maxDistance - minDistance;
+        
+        // 変動幅が40px以内なら安定とみなす
+        return variability < 40;
+    }
+    
+    // 新しいメソッド: ガゼリスナーの確実な設定
+    ensureGazeListener() {
+        if (typeof webgazer !== 'undefined') {
+            // 既存のリスナーを一度クリア
+            webgazer.clearGazeListener();
+            
+            // 新しいリスナーを設定
+            webgazer.setGazeListener((data, timestamp) => {
+                if (data && this.isTracking) {
+                    this.handleGazeData(data, timestamp);
+                }
+            });
+            
+            console.log('キャリブレーション用ガゼリスナーを設定しました');
+        }
+    }
+    
+    // 新しいメソッド: 視線モニタリングを開始
+    startGazeMonitoring() {
+        console.log(`キャリブレーションポイント ${this.currentCalibrationIndex + 1} の視線モニタリングを開始`);
+        console.log(`条件: ${this.calibrationGazeData.accuracyThreshold}px以内で${this.calibrationGazeData.requiredStableTime/1000}秒間安定`);
+        
+        // 視線データの受信確認
+        const checkInterval = setInterval(() => {
+            if (!this.calibrationGazeData.currentPoint) {
+                clearInterval(checkInterval);
+                return;
+            }
+            
+            const recentData = this.calibrationGazeData.gazeHistory.filter(
+                entry => Date.now() - entry.timestamp < 1000
+            );
+            
+            if (recentData.length === 0) {
+                console.warn('視線データが受信されていません。WebGazerの状態を確認してください。');
+            }
+        }, 2000);
+    }
+    
     processCalibrationGaze(gazeData) {
-        if (!this.calibrationGazeData.currentPoint) return;
+        if (!this.calibrationGazeData.currentPoint || this.calibrationGazeData.progressLocked) return;
+        
+        // 視線データの有効性を厳密にチェック
+        if (!this.isValidGazeData(gazeData)) {
+            console.log('無効な視線データを除外:', gazeData);
+            return;
+        }
         
         const point = this.calibrationGazeData.currentPoint;
         const targetX = point.x * window.innerWidth;
@@ -246,18 +384,23 @@ class AdvancedEyeTracker {
             Math.pow(gazeData.y - targetY, 2)
         );
         
+        // 視線履歴を更新
+        this.updateGazeHistory(gazeData, distance);
+        
         this.calibrationGazeData.gazeDistance = distance;
+        this.calibrationGazeData.lastValidGaze = gazeData;
         
-        // 視视的フィードバックを更新
-        this.updateCalibrationFeedback(distance);
+        // 視覚的フィードバックを更新
+        this.updateCalibrationFeedback(distance, gazeData);
         
-        // 視線が十分近いかチェック（50px以内）
-        const isNearTarget = distance < 50;
+        // 安定性をより厳密にチェック
+        const isStableAndAccurate = this.checkGazeStability(distance);
         
-        if (isNearTarget) {
+        if (isStableAndAccurate) {
             if (!this.calibrationGazeData.isGazeStable) {
                 this.calibrationGazeData.isGazeStable = true;
                 this.calibrationGazeData.stableStartTime = Date.now();
+                console.log(`安定した視線を検出: ${Math.round(distance)}px, ターゲット: ${Math.round(targetX)}, ${Math.round(targetY)}`);
             }
             
             const stableDuration = Date.now() - this.calibrationGazeData.stableStartTime;
@@ -265,37 +408,63 @@ class AdvancedEyeTracker {
             
             this.updateCalibrationProgress(progress);
             
-            // 十分な時間安定したら進行
+            // 進行条件: 2秒間安定 + 十分な精度
             if (progress >= 1) {
+                console.log(`キャリブレーション点 ${this.currentCalibrationIndex + 1} 完了: ${Math.round(distance)}px精度`);
+                this.calibrationGazeData.progressLocked = true; // 重複進行を防止
                 this.proceedToNextCalibrationPoint();
             }
         } else {
+            // 不安定な場合はリセット
+            if (this.calibrationGazeData.isGazeStable) {
+                console.log(`視線が不安定になりました: ${Math.round(distance)}px`);
+            }
             this.calibrationGazeData.isGazeStable = false;
             this.calibrationGazeData.stableStartTime = null;
             this.updateCalibrationProgress(0);
         }
     }
     
-    updateCalibrationFeedback(distance) {
+    updateCalibrationFeedback(distance, gazeData) {
         const pointElement = document.querySelector('.calibration-point');
         const distanceIndicator = pointElement?.querySelector('.distance-indicator');
         
         if (!pointElement || !distanceIndicator) return;
         
-        // 距離に応じて点の色を変更
+        // より詳細な色分けとフィードバック
+        let status = '';
         if (distance < 30) {
             pointElement.style.background = '#27ae60'; // 緑：非常に近い
-        } else if (distance < 50) {
-            pointElement.style.background = '#f39c12'; // オレンジ：近い
+            pointElement.style.boxShadow = '0 0 30px rgba(39, 174, 96, 0.8)';
+            status = '優秀';
+        } else if (distance < this.calibrationGazeData.accuracyThreshold) {
+            pointElement.style.background = '#f39c12'; // オレンジ：許容範囲
+            pointElement.style.boxShadow = '0 0 25px rgba(243, 156, 18, 0.8)';
+            status = '良好';
         } else if (distance < 100) {
             pointElement.style.background = '#e74c3c'; // 赤：遠い
+            pointElement.style.boxShadow = '0 0 20px rgba(231, 76, 60, 0.8)';
+            status = '要調整';
         } else {
             pointElement.style.background = '#95a5a6'; // グレー：非常に遠い
+            pointElement.style.boxShadow = '0 0 15px rgba(149, 165, 166, 0.6)';
+            status = '検出失敗';
         }
         
-        // 距離情報を表示
-        distanceIndicator.textContent = Math.round(distance) + 'px';
-        distanceIndicator.style.color = distance < 50 ? '#27ae60' : '#e74c3c';
+        // 詳細な距離情報を表示
+        distanceIndicator.innerHTML = `
+            <div style="font-size: 10px; color: white;">${Math.round(distance)}px</div>
+            <div style="font-size: 8px; color: ${distance < this.calibrationGazeData.accuracyThreshold ? '#27ae60' : '#e74c3c'};">${status}</div>
+        `;
+        
+        // 視線座標も表示（デバッグ用）
+        if (gazeData) {
+            const point = this.calibrationGazeData.currentPoint;
+            const targetX = point.x * window.innerWidth;
+            const targetY = point.y * window.innerHeight;
+            
+            console.log(`視線: (${Math.round(gazeData.x)}, ${Math.round(gazeData.y)}) → ターゲット: (${Math.round(targetX)}, ${Math.round(targetY)}) = ${Math.round(distance)}px`);
+        }
     }
     
     updateCalibrationProgress(progress) {
@@ -327,39 +496,51 @@ class AdvancedEyeTracker {
     
     startInteractiveCalibration(point, pointElement) {
         this.calibrationGazeData.currentPoint = point;
+        this.calibrationGazeData.isGazeStable = false;
+        this.calibrationGazeData.stableStartTime = null;
+        this.calibrationGazeData.progressLocked = false;
         
-        // フォールバッククリックイベント
+        // 緊急時のクリックフォールバック（デバッグ用）
+        let clickCount = 0;
         pointElement.addEventListener('click', () => {
-            this.proceedToNextCalibrationPoint();
+            clickCount++;
+            if (clickCount >= 3) { // 3回クリックで強制進行
+                console.log('緊急フォールバック: 3回クリックで進行');
+                this.proceedToNextCalibrationPoint();
+            } else {
+                // 通常は視線での進行を促す
+                console.log(`視線で${point.x * 100}%, ${point.y * 100}%の位置を見つめてください (クリック${clickCount}/3)`);
+            }
         });
         
-        // 10秒後に自動進行（フォールバック）
-        setTimeout(() => {
-            if (this.calibrationGazeData.currentPoint === point) {
-                this.proceedToNextCalibrationPoint();
-            }
-        }, 10000);
+        // 視線データの監視を開始
+        this.startGazeMonitoring();
     }
     
     proceedToNextCalibrationPoint() {
         const point = this.calibrationGazeData.currentPoint;
-        if (!point) return;
+        if (!point || this.calibrationGazeData.progressLocked !== true) return;
         
+        // 進行音
+        this.playProgressSound();
+        
+        // キャリブレーションデータを記録
         this.recordCalibrationPoint(point);
         
         const pointElement = document.querySelector('.calibration-point');
         if (pointElement) {
             pointElement.classList.add('completed');
+            pointElement.style.background = '#27ae60';
+            pointElement.style.transform = 'translate(-50%, -50%) scale(1.2)';
         }
         
-        // 進行音
-        this.playProgressSound();
-        
+        // 次のポイントへ進む
         setTimeout(() => {
             this.currentCalibrationIndex++;
             this.calibrationGazeData.currentPoint = null;
+            this.calibrationGazeData.progressLocked = false;
             this.showCalibrationPoint();
-        }, 800);
+        }, 1000);
     }
     
     recordCalibrationPoint(point) {
@@ -742,40 +923,39 @@ class AdvancedEyeTracker {
     }
     
     handleGazeData(data, timestamp) {
-        // データの有効性チェック
+        // キャリブレーション中は特別な処理
+        if (this.isCalibrating) {
+            // キャリブレーション中はスムージングなしでより正確なデータを使用
+            if (data && typeof data.x === 'number' && typeof data.y === 'number') {
+                this.updateGazePoint(data); // 生データでガゼポイント更新
+                this.processCalibrationGaze(data);
+            }
+            return;
+        }
+        
+        // 通常時の処理（既存のロジック）
         if (!data || typeof data.x !== 'number' || typeof data.y !== 'number') {
             return;
         }
         
-        // 画面範囲外のデータを除外
         if (data.x < 0 || data.x > window.innerWidth || 
             data.y < 0 || data.y > window.innerHeight) {
             return;
         }
         
-        // 履歴に追加
         this.gazeHistory.push({ ...data, timestamp });
         if (this.gazeHistory.length > this.maxHistoryLength) {
             this.gazeHistory.shift();
         }
         
-        // スムージング適用
         if (this.settings.enableSmoothing) {
             this.smoothedGaze = this.applySmoothingFilter(data);
         } else {
             this.smoothedGaze = data;
         }
         
-        // ガゼポイント更新（通常時とキャリブレーション時両方）
         this.updateGazePoint(this.smoothedGaze);
-        
-        // キャリブレーション中の処理
-        if (this.isCalibrating) {
-            this.processCalibrationGaze(this.smoothedGaze);
-        } else {
-            // 文字選択処理
-            this.processCharacterSelection(this.smoothedGaze);
-        }
+        this.processCharacterSelection(this.smoothedGaze);
     }
     
     applySmoothingFilter(newData) {
