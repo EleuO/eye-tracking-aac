@@ -83,15 +83,15 @@ export function useCameraManager() {
       if (typeof webgazer !== 'undefined' && webgazer.isReady()) {
         console.log('🔧 WebGazerにカメラを設定中...')
         
-        await webgazer.setConstraints({
-          video: {
-            deviceId: { exact: camera.deviceId },
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
-          }
-        })
-        
-        console.log('✅ WebGazerカメラ設定完了')
+        // setConstraintsは非推奨のため、WebGazerを再初期化でカメラ変更
+        try {
+          await webgazer.end()
+          await new Promise(resolve => setTimeout(resolve, 500))
+          await webgazer.begin()
+          console.log('✅ WebGazerカメラ再初期化完了')
+        } catch (err) {
+          console.log('⚠️ WebGazerカメラ再初期化エラー:', err)
+        }
       } else {
         console.log('⚠️ WebGazerが準備できていませんが、カメラは選択されました')
       }

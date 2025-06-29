@@ -54,14 +54,7 @@ export function useWebGazer() {
 
       // カメラ制約を設定（高解像度）
       console.log('📹 カメラ制約を設定中...')
-      await webgazer.setConstraints({
-        video: {
-          width: { ideal: 1280, min: 640 },
-          height: { ideal: 720, min: 480 },
-          frameRate: { ideal: 30, min: 15 },
-          facingMode: 'user'
-        }
-      })
+      // 注意: setConstraintsは非推奨のため、WebGazer.beginでカメラを自動設定
 
       // WebGazerを開始
       console.log('▶️ WebGazer開始中...')
