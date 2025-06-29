@@ -7,46 +7,11 @@
     <meta name="description" content="視線追跡技術を使用した日本語対応の意思伝達支援装置">
     <meta name="keywords" content="AAC, 視線追跡, 意思伝達, アクセシビリティ, webgazer">
     
-    <!-- WebGazer.js CDN with error handling -->
+    <!-- MediaPipeベースシステム - WebGazer.js不要 -->
     <script>
-        // WebGazer CDN 読み込みエラー監視
-        window.webgazerLoadError = false;
-        
-        // WebGazer読み込み完了確認
-        function checkWebGazerLoad() {
-            if (typeof webgazer === 'undefined') {
-                console.error('❌ WebGazer.js 読み込み失敗');
-                window.webgazerLoadError = true;
-                
-                // フォールバック表示
-                const app = document.getElementById('app');
-                if (app) {
-                    app.innerHTML = `
-                        <div style="padding: 20px; text-align: center; font-family: Arial, sans-serif; background: #f8f9fa; min-height: 100vh;">
-                            <h1>🚨 WebGazer.js 読み込みエラー</h1>
-                            <p>視線追跡ライブラリの読み込みに失敗しました。</p>
-                            <p>ネットワーク接続を確認して再読み込みしてください。</p>
-                            <button onclick="window.location.reload()" 
-                                    style="padding: 10px 20px; margin: 10px; background: #3498db; color: white; border: none; border-radius: 5px; cursor: pointer;">
-                                再読み込み
-                            </button>
-                            <details style="margin-top: 20px; text-align: left; max-width: 500px; margin-left: auto; margin-right: auto;">
-                                <summary>技術詳細</summary>
-                                <p>URL: https://webgazer.cs.brown.edu/webgazer.js</p>
-                                <p>User Agent: ${navigator.userAgent}</p>
-                                <p>時刻: ${new Date().toISOString()}</p>
-                            </details>
-                        </div>
-                    `;
-                }
-            } else {
-                console.log('✅ WebGazer.js 読み込み成功');
-            }
-        }
+        console.log('🚀 MediaPipe Eye Tracking AAC System v3.0');
+        console.log('📋 WebGazer.js → MediaPipe完全移行完了');
     </script>
-    <script src="https://webgazer.cs.brown.edu/webgazer.js" 
-            onerror="console.error('❌ WebGazer CDN Error'); window.webgazerLoadError = true;"
-            onload="console.log('📦 WebGazer CDN loaded'); setTimeout(checkWebGazerLoad, 1000);"></script>
     
     <!-- PWA Support -->
     <link rel="manifest" href="/manifest.json">
@@ -133,8 +98,8 @@
         <div class="spinner"></div>
         <div class="loading-steps">
             <div class="loading-step active" id="step-1">📦 Vue3アプリケーション読み込み中...</div>
-            <div class="loading-step" id="step-2">👁️ WebGazer.js初期化中...</div>
-            <div class="loading-step" id="step-3">🎬 カメラアクセス待機中...</div>
+            <div class="loading-step" id="step-2">🎯 MediaPipe Face Detection初期化中...</div>
+            <div class="loading-step" id="step-3">🎬 9ゾーンAAC システム準備中...</div>
             <div class="loading-step" id="step-4">✅ 準備完了！</div>
         </div>
     </div>
@@ -163,27 +128,23 @@
             updateLoadingStep(2);
         });
 
-        // WebGazerが読み込まれたら
-        const checkWebGazer = setInterval(() => {
-            if (typeof webgazer !== 'undefined') {
-                updateLoadingStep(3);
-                clearInterval(checkWebGazer);
+        // MediaPipeアプリ読み込み待機
+        const checkMediaPipeApp = setInterval(() => {
+            // Vue3アプリがマウントされたらローディング終了
+            if (document.querySelector('#app .mediapipe-aac-app')) {
+                updateLoadingStep(4);
+                clearInterval(checkMediaPipeApp);
                 
-                // WebGazer初期化後
+                // ローディング画面を徐々に非表示
                 setTimeout(() => {
-                    updateLoadingStep(4);
+                    const loading = document.getElementById('loading');
+                    loading.style.opacity = '0';
+                    loading.style.transition = 'opacity 0.5s ease';
                     
-                    // ローディング画面を徐々に非表示
                     setTimeout(() => {
-                        const loading = document.getElementById('loading');
-                        loading.style.opacity = '0';
-                        loading.style.transition = 'opacity 0.5s ease';
-                        
-                        setTimeout(() => {
-                            loading.style.display = 'none';
-                        }, 500);
-                    }, 1000);
-                }, 2000);
+                        loading.style.display = 'none';
+                    }, 500);
+                }, 500);
             }
         }, 100);
 
@@ -202,15 +163,15 @@
             `;
         });
 
-        // WebGazerが利用可能かチェック
+        // MediaPipeシステム要件チェック
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.warn('このブラウザはWebRTCをサポートしていません');
+            console.warn('このブラウザはWebRTCをサポートしていません - MediaPipeには必須です');
         }
 
         // カメラ許可のチェック
         navigator.permissions?.query({name: 'camera'}).then((result) => {
             if (result.state === 'denied') {
-                console.warn('カメラアクセスが拒否されています');
+                console.warn('カメラアクセスが拒否されています - MediaPipe顔検出には必須です');
             }
         });
     </script>

@@ -1,5 +1,8 @@
 import { createApp } from 'vue'
-import App from './App.vue'
+// WebGazer.js版（旧）
+// import App from './App.vue'  
+// MediaPipe版（新）- より安定・高精度
+import App from './App-MediaPipe.vue'
 import './assets/css/main.css'
 
 // エラーハンドリング追加
