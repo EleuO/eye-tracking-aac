@@ -182,12 +182,48 @@
       </div>
     </div>
 
+    <!-- フォールバックモード通知 -->
+    <div v-if="faceTracker.error.value && faceTracker.error.value.includes('フォールバック')" 
+         class="fallback-notification">
+      <div class="notification-content">
+        <h4>🖱️ フォールバックモード有効</h4>
+        <p>MediaPipeが利用できないため、マウス操作モードで動作しています。</p>
+        <div class="fallback-instructions">
+          <p><strong>操作方法:</strong></p>
+          <ul>
+            <li>🖱️ マウス移動で視線をシミュレート</li>
+            <li>⌨️ 矢印キーでも操作可能</li>
+            <li>📱 タッチデバイスではタッチで操作</li>
+          </ul>
+        </div>
+        <button @click="faceTracker.error.value = null" class="notification-close">
+          ✕
+        </button>
+      </div>
+    </div>
+
     <!-- ローディング表示 -->
     <div v-if="!faceTracker.isInitialized.value" class="loading-overlay">
       <div class="loading-content">
         <div class="spinner"></div>
-        <h3>MediaPipe初期化中...</h3>
-        <p>初回読み込みには少し時間がかかります</p>
+        <h3>システム初期化中...</h3>
+        <p id="loading-message">MediaPipeを読み込み中...</p>
+        <div class="loading-progress">
+          <div class="progress-steps">
+            <div class="step">📦 ライブラリ読み込み</div>
+            <div class="step">🎯 顔検出エンジン初期化</div>
+            <div class="step">📹 カメラ準備</div>
+            <div class="step">✅ 準備完了</div>
+          </div>
+        </div>
+        <div class="loading-tips">
+          <p><strong>💡 ヒント:</strong></p>
+          <ul>
+            <li>カメラアクセスを許可してください</li>
+            <li>15秒以上かかる場合は自動でフォールバックモードに切り替わります</li>
+            <li>フォールバックモードではマウス操作が可能です</li>
+          </ul>
+        </div>
       </div>
     </div>
   </div>
@@ -228,6 +264,9 @@ const statusText = computed(() => {
   if (error.value) return 'エラー'
   if (!faceTracker.isInitialized.value) return '初期化中...'
   if (!faceTracker.isTracking.value) return '準備完了'
+  if (faceTracker.error.value && faceTracker.error.value.includes('フォールバック')) {
+    return 'フォールバックモード (マウス操作)'
+  }
   if (!faceTracker.faceDetected.value) return '顔を検出中...'
   return '追跡中'
 })
@@ -674,8 +713,47 @@ input[type="range"] {
   padding: 2rem;
   border-radius: 10px;
   text-align: center;
-  max-width: 500px;
+  max-width: 600px;
   margin: 1rem;
+}
+
+.loading-progress {
+  margin: 1.5rem 0;
+}
+
+.progress-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  text-align: left;
+  margin: 1rem 0;
+}
+
+.step {
+  padding: 0.5rem;
+  background: rgba(52, 152, 219, 0.1);
+  border-left: 3px solid #3498db;
+  border-radius: 3px;
+  font-size: 0.9rem;
+}
+
+.loading-tips {
+  background: rgba(241, 196, 15, 0.1);
+  border: 1px solid #f1c40f;
+  border-radius: 5px;
+  padding: 1rem;
+  margin-top: 1.5rem;
+  text-align: left;
+}
+
+.loading-tips ul {
+  margin: 0.5rem 0 0 1rem;
+  padding: 0;
+}
+
+.loading-tips li {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
 }
 
 .spinner {
@@ -699,6 +777,67 @@ input[type="range"] {
   100% { transform: rotate(360deg); }
 }
 
+.fallback-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 9000;
+  max-width: 350px;
+}
+
+.notification-content {
+  background: rgba(241, 196, 15, 0.95);
+  color: #333;
+  padding: 1.5rem;
+  border-radius: 10px;
+  border: 2px solid #f39c12;
+  position: relative;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.notification-content h4 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.1rem;
+}
+
+.fallback-instructions {
+  margin-top: 1rem;
+  background: rgba(255, 255, 255, 0.3);
+  padding: 0.75rem;
+  border-radius: 5px;
+}
+
+.fallback-instructions ul {
+  margin: 0.5rem 0 0 1rem;
+  padding: 0;
+}
+
+.fallback-instructions li {
+  margin: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.notification-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: none;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: #333;
+  width: 25px;
+  height: 25px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+}
+
+.notification-close:hover {
+  background: rgba(0, 0, 0, 0.1);
+}
+
 @media (max-width: 1200px) {
   .app-main {
     grid-template-columns: 1fr;
@@ -707,6 +846,13 @@ input[type="range"] {
   
   .debug-panel {
     order: -1;
+  }
+  
+  .fallback-notification {
+    top: 10px;
+    right: 10px;
+    left: 10px;
+    max-width: none;
   }
 }
 </style>
