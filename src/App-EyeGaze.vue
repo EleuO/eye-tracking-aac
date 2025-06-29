@@ -149,6 +149,75 @@
           </div>
         </div>
 
+        <!-- 🎯 真の瞳孔追跡ベースライン設定 -->
+        <div class="section">
+          <h3>👁️ 瞳孔追跡設定</h3>
+          <div class="pupil-tracking-controls">
+            <div v-if="!truePupilTracking.baseline.isSet" class="baseline-setup">
+              <div class="baseline-message">
+                <span class="status-icon">📍</span>
+                ベースライン未設定<br>
+                <small>画面中央を見つめて設定</small>
+              </div>
+              <button 
+                @click="setEyeBaseline"
+                :disabled="!faceTracker.isTracking.value"
+                class="primary-btn baseline-btn"
+              >
+                📍 ベースライン設定
+              </button>
+            </div>
+            
+            <div v-if="truePupilTracking.baseline.isSet" class="baseline-active">
+              <div class="baseline-success">
+                <span class="status-icon">✅</span>
+                ベースライン設定済み
+              </div>
+              <div class="pupil-stats">
+                <div class="stat-item">
+                  <strong>検出率:</strong> {{ Math.round(truePupilTracking.stats.detectionRate) }}%
+                </div>
+                <div class="stat-item">
+                  <strong>感度:</strong> {{ truePupilTracking.settings.sensitivity.toFixed(1) }}x
+                </div>
+                <div class="stat-item">
+                  <strong>運動範囲:</strong> {{ Math.round(truePupilTracking.stats.averageMovement) }}px
+                </div>
+              </div>
+              
+              <div class="sensitivity-control">
+                <label>
+                  感度調整: {{ truePupilTracking.settings.sensitivity.toFixed(1) }}x
+                  <input 
+                    type="range" 
+                    min="0.5" 
+                    max="10.0" 
+                    step="0.5"
+                    :value="truePupilTracking.settings.sensitivity"
+                    @input="adjustPupilSensitivity($event.target.value)"
+                  >
+                </label>
+              </div>
+              
+              <button 
+                @click="resetEyeBaseline"
+                class="secondary-btn"
+              >
+                🔄 ベースライン再設定
+              </button>
+            </div>
+            
+            <div class="tracking-method-display">
+              <div class="method-indicator" :class="gazePoint?.method">
+                {{ gazePoint?.method === 'truePupilTracking' ? '👁️ 瞳孔追跡モード' : '🔄 頭部姿勢モード' }}
+              </div>
+              <div v-if="gazePoint?.eyeMovement" class="eye-movement-display">
+                <small>眼球運動: X={{ gazePoint.eyeMovement.x.toFixed(1) }}, Y={{ gazePoint.eyeMovement.y.toFixed(1) }}</small>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- 🎯 学習データ収集（革命的プロダクト開発用） -->
         <div class="section">
           <h3>🧠 学習データ収集</h3>
@@ -214,10 +283,23 @@
         
         <!-- デバッグ情報表示 -->
         <div v-if="gazePoint && faceTracker.settings.debugMode" class="debug-info">
-          <div class="debug-item">頭部姿勢: Yaw={{ Math.round(gazePoint.headPose.yaw) }}°, Pitch={{ Math.round(gazePoint.headPose.pitch) }}°</div>
+          <div class="debug-item method-info">検出方法: {{ gazePoint.method === 'truePupilTracking' ? '👁️ 瞳孔追跡' : '🔄 頭部姿勢' }}</div>
+          
+          <div v-if="gazePoint.method === 'truePupilTracking'" class="pupil-debug">
+            <div class="debug-item">眼球運動: X={{ gazePoint.eyeMovement.x.toFixed(1) }}, Y={{ gazePoint.eyeMovement.y.toFixed(1) }}</div>
+            <div class="debug-item">運動強度: {{ gazePoint.eyeMovement.magnitude.toFixed(1) }}px</div>
+            <div class="debug-item">瞳孔追跡感度: {{ truePupilTracking.settings.sensitivity.toFixed(1) }}x</div>
+            <div class="debug-item">検出率: {{ Math.round(truePupilTracking.stats.detectionRate) }}%</div>
+          </div>
+          
+          <div v-if="gazePoint.method === 'headPoseFallback'" class="headpose-debug">
+            <div class="debug-item">頭部姿勢: Yaw={{ Math.round(gazePoint.headPose.yaw) }}°, Pitch={{ Math.round(gazePoint.headPose.pitch) }}°</div>
+            <div class="debug-item">正規化: X={{ gazePoint.debug.normalizedGazeX.toFixed(2) }}, Y={{ gazePoint.debug.normalizedGazeY.toFixed(2) }}</div>
+          </div>
+          
           <div class="debug-item">視線座標: ({{ Math.round(gazePoint.x) }}, {{ Math.round(gazePoint.y) }})</div>
-          <div class="debug-item">正規化: X={{ gazePoint.debug.normalizedGazeX.toFixed(2) }}, Y={{ gazePoint.debug.normalizedGazeY.toFixed(2) }}</div>
-          <div class="debug-item">検出方法: {{ faceTracker.stats.detectionMethod }}</div>
+          <div class="debug-item">信頼度: {{ Math.round(gazePoint.confidence * 100) }}%</div>
+          <div class="debug-item">OpenCV: {{ faceTracker.stats.detectionMethod }}</div>
         </div>
 
         <!-- 9ゾーングリッド -->
@@ -452,6 +534,7 @@ import { useZoneBasedAAC } from './composables/useZoneBasedAAC.js'
 import { useGazeLearningLogger } from './composables/useGazeLearningLogger.js'
 import { useEyeCalibration } from './composables/useEyeCalibration.js'
 import { useEnhancedEyeDetection } from './composables/useEnhancedEyeDetection.js'
+import { useTruePupilTracking } from './composables/useTruePupilTracking.js'
 
 // Face Tracker (OpenCV版)
 const faceTracker = useOpenCVFaceTracker()
@@ -468,6 +551,9 @@ const eyeCalibration = useEyeCalibration()
 // 🎯 強化された瞳孔検出システム（低画質カメラ対応）
 const enhancedEyeDetection = useEnhancedEyeDetection()
 
+// 🎯 真の瞳孔追跡システム（革命的眼球運動検出）
+const truePupilTracking = useTruePupilTracking()
+
 // UI状態
 const showCamera = ref(true)
 const showGazePoint = ref(true)
@@ -479,10 +565,65 @@ const selectedCamera = ref(null)
 const videoElement = ref(null)
 const canvasElement = ref(null)
 
-// 🎯 革命的キャリブレーション対応視線ポイント計算
+// 🎯 革命的真の眼球運動ベース視線ポイント計算
 const gazePoint = computed(() => {
   if (!faceTracker.faceDetected.value) return null
   
+  // 🎯 真の瞳孔追跡が有効な場合（優先）
+  if (truePupilTracking.baseline.isSet && truePupilTracking.gazeDirection.value) {
+    const eyeMovement = truePupilTracking.gazeDirection.value
+    const confidence = eyeMovement.confidence
+    
+    // 信頼度チェック
+    if (confidence < 0.3) return null
+    
+    // 画面サイズとインターフェース領域を取得
+    const screenWidth = window.innerWidth
+    const screenHeight = window.innerHeight
+    const interfaceElement = document.querySelector('.gaze-interface')
+    
+    // インターフェース領域のサイズと位置
+    let interfaceRect = { left: 0, top: 0, width: screenWidth, height: screenHeight }
+    if (interfaceElement) {
+      interfaceRect = interfaceElement.getBoundingClientRect()
+    }
+    
+    // 🎯 眼球運動から画面座標への変換
+    const centerX = interfaceRect.left + interfaceRect.width * 0.5
+    const centerY = interfaceRect.top + interfaceRect.height * 0.5
+    
+    // 眼球運動を画面座標に変換（患者向け高感度）
+    const gazeX = centerX + eyeMovement.x * interfaceRect.width * 0.001  // 高感度設定
+    const gazeY = centerY + eyeMovement.y * interfaceRect.height * 0.001
+    
+    // 画面境界内に制限
+    const boundedX = Math.max(20, Math.min(screenWidth - 20, gazeX))
+    const boundedY = Math.max(20, Math.min(screenHeight - 20, gazeY))
+    
+    return {
+      x: boundedX,
+      y: boundedY,
+      confidence: confidence,
+      method: 'truePupilTracking',
+      eyeMovement: {
+        x: eyeMovement.x,
+        y: eyeMovement.y,
+        magnitude: eyeMovement.magnitude
+      },
+      debug: {
+        rawEyeMovementX: eyeMovement.x,
+        rawEyeMovementY: eyeMovement.y,
+        centerX,
+        centerY,
+        gazeX,
+        gazeY,
+        interfaceRect,
+        hasBaseline: truePupilTracking.baseline.isSet
+      }
+    }
+  }
+  
+  // 🔄 フォールバック: 従来の頭部姿勢ベース
   const headPose = faceTracker.faceData.headPose
   const confidence = faceTracker.faceData.confidence
   
@@ -514,13 +655,13 @@ const gazePoint = computed(() => {
     // インターフェース領域内での座標計算（キャリブレーション済み）
     finalGazeX = interfaceRect.left + interfaceRect.width * calibratedGaze.x
     finalGazeY = interfaceRect.top + interfaceRect.height * calibratedGaze.y
-    finalConfidence = Math.min(confidence, calibratedGaze.confidence)
+    finalConfidence = Math.min(confidence, calibratedGaze.confidence) * 0.7 // フォールバックペナルティ
     
   } else {
     // 未キャリブレーション: 従来の推定計算
     finalGazeX = interfaceRect.left + interfaceRect.width * (0.5 + normalizedGazeX * 0.4)
     finalGazeY = interfaceRect.top + interfaceRect.height * (0.5 + normalizedGazeY * 0.4)
-    finalConfidence = confidence * 0.7 // 未キャリブレーションペナルティ
+    finalConfidence = confidence * 0.5 // 未キャリブレーション + フォールバックペナルティ
   }
   
   // 画面境界内に制限
@@ -531,6 +672,7 @@ const gazePoint = computed(() => {
     x: boundedX,
     y: boundedY,
     confidence: finalConfidence,
+    method: 'headPoseFallback',
     headPose: { ...headPose },
     calibrated: eyeCalibration.isComplete.value,
     calibrationAccuracy: eyeCalibration.calibrationMatrix.accuracy.overall,
@@ -540,7 +682,8 @@ const gazePoint = computed(() => {
       interfaceRect,
       rawGazeX: finalGazeX,
       rawGazeY: finalGazeY,
-      isCalibrated: eyeCalibration.isComplete.value
+      isCalibrated: eyeCalibration.isComplete.value,
+      hasBaseline: false
     }
   }
 })
@@ -726,27 +869,65 @@ const stopTracking = async () => {
 }
 
 /**
- * 視線処理ループ開始（学習データ収集統合版）
+ * 🎯 革命的視線処理ループ（真の瞳孔追跡統合版）
  */
 const startGazeProcessing = () => {
-  const processGaze = () => {
-    if (faceTracker.isTracking.value) {
-      // ゾーン選択処理を実行
-      zoneAAC.processZoneSelection()
-      
-      // 🎯 学習データ自動収集（患者さんのため！）
-      if (gazeLearner.isLogging.value) {
-        const currentZone = zoneAAC.currentZone.value?.id || null
-        gazeLearner.logGazeEvent(
-          gazePoint.value,
-          faceTracker.faceData,
-          currentZone,
-          gazeLearner.currentSession.lastIntention
-        )
+  const processGaze = async () => {
+    if (faceTracker.isTracking.value && faceTracker.faceDetected.value) {
+      try {
+        // 🎯 真の瞳孔追跡処理
+        const canvas = canvasElement.value
+        const ctx = canvasCtx.value
         
-        // 意図がクリアされた場合（次のデータポイント用）
-        if (gazeLearner.currentSession.lastIntention !== null) {
-          gazeLearner.currentSession.lastIntention = null
+        if (canvas && ctx) {
+          // 現在のフレームからImageDataを取得
+          const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height)
+          
+          // 顔領域情報
+          const faceRegion = {
+            x: faceTracker.faceData.x - faceTracker.faceData.width / 2,
+            y: faceTracker.faceData.y - faceTracker.faceData.height / 2,
+            width: faceTracker.faceData.width,
+            height: faceTracker.faceData.height
+          }
+          
+          // 🎯 真の瞳孔検出実行
+          const pupilResult = await truePupilTracking.detectTruePupils(imageData, faceRegion)
+          
+          if (pupilResult) {
+            // 統計更新
+            truePupilTracking.updateStats()
+            
+            // デバッグログ（5秒ごと）
+            if (Date.now() % 5000 < 50) {
+              console.log(`👁️ 瞳孔追跡統計: 検出率=${truePupilTracking.stats.detectionRate.toFixed(1)}%, 平均運動=${truePupilTracking.stats.averageMovement.toFixed(1)}px`)
+            }
+          }
+        }
+        
+        // ゾーン選択処理を実行
+        zoneAAC.processZoneSelection()
+        
+        // 🎯 学習データ自動収集（患者さんのため！）
+        if (gazeLearner.isLogging.value) {
+          const currentZone = zoneAAC.currentZone.value?.id || null
+          gazeLearner.logGazeEvent(
+            gazePoint.value,
+            faceTracker.faceData,
+            currentZone,
+            gazeLearner.currentSession.lastIntention
+          )
+          
+          // 意図がクリアされた場合（次のデータポイント用）
+          if (gazeLearner.currentSession.lastIntention !== null) {
+            gazeLearner.currentSession.lastIntention = null
+          }
+        }
+        
+      } catch (err) {
+        // エラーが発生してもループは継続
+        if (Date.now() % 10000 < 50) { // 10秒ごとにエラーログ
+          console.error('👁️ 瞳孔追跡エラー:', err)
         }
       }
     }
@@ -825,6 +1006,61 @@ const correctIntention = (zoneIndex) => {
       icon: '/favicon.ico'
     })
   }
+}
+
+/**
+ * 📍 眼球運動ベースライン設定（革命的瞳孔追跡）
+ */
+const setEyeBaseline = async () => {
+  console.log('📍 ベースライン設定開始 - 画面中央を見つめてください')
+  
+  try {
+    // 3秒間のカウントダウン
+    for (let i = 3; i > 0; i--) {
+      console.log(`⏰ ベースライン設定まで ${i} 秒...`)
+      await new Promise(resolve => setTimeout(resolve, 1000))
+    }
+    
+    const success = truePupilTracking.setBaseline()
+    
+    if (success) {
+      console.log('✅ ベースライン設定成功！眼球運動検出開始')
+      
+      // 通知表示
+      if ('Notification' in window && Notification.permission === 'granted') {
+        new Notification('ベースライン設定完了', {
+          body: '眼球運動による高精度視線追跡が有効になりました',
+          icon: '/favicon.ico'
+        })
+      }
+    } else {
+      error.value = 'ベースライン設定失敗: 瞳孔が検出されていません'
+    }
+    
+  } catch (err) {
+    console.error('❌ ベースライン設定エラー:', err)
+    error.value = `ベースライン設定失敗: ${err.message}`
+  }
+}
+
+/**
+ * 🔄 ベースラインリセット
+ */
+const resetEyeBaseline = () => {
+  console.log('🔄 ベースラインリセット')
+  truePupilTracking.resetBaseline()
+  
+  // 統計情報もリセット
+  truePupilTracking.history.value = []
+}
+
+/**
+ * 🎛️ 瞳孔追跡感度調整
+ */
+const adjustPupilSensitivity = (value) => {
+  const newSensitivity = parseFloat(value)
+  truePupilTracking.adjustSensitivity(newSensitivity)
+  console.log(`🎛️ 瞳孔追跡感度: ${newSensitivity}x`)
 }
 
 /**
@@ -1949,5 +2185,159 @@ input[type="checkbox"] {
     top: -5px;
     left: -5px;
   }
+}
+
+/* 🎯 瞳孔追跡関連スタイル */
+.pupil-tracking-controls {
+  margin-top: 1rem;
+}
+
+.baseline-setup, .baseline-active {
+  margin-bottom: 1rem;
+}
+
+.baseline-message {
+  text-align: center;
+  padding: 1rem;
+  background: rgba(255, 152, 0, 0.2);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.baseline-message .status-icon {
+  font-size: 1.5rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.baseline-btn {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 0.9rem;
+  background: linear-gradient(45deg, #ff9800, #f57c00);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.baseline-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(255, 152, 0, 0.4);
+}
+
+.baseline-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.baseline-success {
+  color: #4caf50;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+
+.baseline-success .status-icon {
+  font-size: 1.5rem;
+  margin-right: 0.5rem;
+}
+
+.pupil-stats {
+  background: rgba(76, 175, 80, 0.1);
+  padding: 0.8rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.pupil-stats .stat-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.3rem;
+  font-size: 0.85rem;
+}
+
+.sensitivity-control {
+  margin: 1rem 0;
+}
+
+.sensitivity-control label {
+  display: block;
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.sensitivity-control input[type="range"] {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.tracking-method-display {
+  margin-top: 1rem;
+  padding: 0.8rem;
+  border-radius: 8px;
+  text-align: center;
+}
+
+.method-indicator {
+  font-weight: bold;
+  padding: 0.5rem;
+  border-radius: 6px;
+  margin-bottom: 0.5rem;
+}
+
+.method-indicator.truePupilTracking {
+  background: rgba(76, 175, 80, 0.2);
+  color: #4caf50;
+}
+
+.method-indicator.headPoseFallback {
+  background: rgba(255, 152, 0, 0.2);
+  color: #ff9800;
+}
+
+.eye-movement-display {
+  font-family: monospace;
+  opacity: 0.8;
+}
+
+/* デバッグ情報スタイル強化 */
+.debug-info .method-info {
+  font-weight: bold;
+  background: rgba(33, 150, 243, 0.2);
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 0.5rem;
+}
+
+.pupil-debug {
+  background: rgba(76, 175, 80, 0.1);
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+}
+
+.headpose-debug {
+  background: rgba(255, 152, 0, 0.1);
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin: 0.5rem 0;
+}
+
+.secondary-btn {
+  background: #6c757d;
+  color: white;
+  border: none;
+  padding: 0.6rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  transition: all 0.3s ease;
+}
+
+.secondary-btn:hover {
+  background: #5a6268;
+  transform: translateY(-1px);
 }
 </style>
