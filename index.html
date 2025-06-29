@@ -3,226 +3,178 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>視線入力式意思伝達装置</title>
-    <link rel="stylesheet" href="css/style.css">
+    <title>視線入力式意思伝達装置 (AAC) - Vue3版</title>
+    <meta name="description" content="視線追跡技術を使用した日本語対応の意思伝達支援装置">
+    <meta name="keywords" content="AAC, 視線追跡, 意思伝達, アクセシビリティ, webgazer">
+    
+    <!-- WebGazer.js CDN -->
+    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="視線AAC">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/icon-192x192.png">
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://webgazer.cs.brown.edu">
+    
+    <style>
+        /* 初期ローディング画面 */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-family: 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI', Arial, sans-serif;
+            z-index: 99999;
+        }
+        
+        #loading h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        #loading .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 40px;
+            opacity: 0.8;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-steps {
+            margin-top: 30px;
+            text-align: center;
+        }
+        
+        .loading-step {
+            margin: 10px 0;
+            opacity: 0.6;
+            transition: opacity 0.3s ease;
+        }
+        
+        .loading-step.active {
+            opacity: 1;
+            color: #3498db;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
 </head>
 <body>
-    <div class="app-container">
-        <!-- ヘッダー -->
-        <header class="app-header">
-            <h1>視線入力式意思伝達装置</h1>
-            <div class="header-controls">
-                <div class="connection-status" id="connectionStatus">
-                    <span class="status-indicator" id="statusIndicator"></span>
-                    <span id="statusText">接続準備中...</span>
-                </div>
-                <button id="settingsBtn" class="control-btn">⚙️ 設定</button>
-            </div>
-        </header>
+    <!-- 初期ローディング画面 -->
+    <div id="loading">
+        <h1>🎯 視線入力式AAC</h1>
+        <div class="subtitle">Vue3版 - 初期化中...</div>
+        <div class="spinner"></div>
+        <div class="loading-steps">
+            <div class="loading-step active" id="step-1">📦 Vue3アプリケーション読み込み中...</div>
+            <div class="loading-step" id="step-2">👁️ WebGazer.js初期化中...</div>
+            <div class="loading-step" id="step-3">🎬 カメラアクセス待機中...</div>
+            <div class="loading-step" id="step-4">✅ 準備完了！</div>
+        </div>
+    </div>
 
-        <!-- メインコンテンツ -->
-        <main class="main-content">
-            <!-- カメラ・キャリブレーション領域 -->
-            <section class="camera-section">
-                <div class="camera-container">
-                    <video id="cameraVideo" autoplay playsinline muted></video>
-                    <canvas id="gazeOverlay"></canvas>
-                    <div id="gazePoint" class="gaze-point"></div>
-                </div>
+    <!-- Vue3アプリケーションマウントポイント -->
+    <div id="app"></div>
+
+    <!-- Vue3アプリケーション -->
+    <script type="module" src="/src/main.js"></script>
+
+    <script>
+        // ローディング画面の管理
+        let currentStep = 1;
+        
+        const updateLoadingStep = (step) => {
+            // 前のステップを非アクティブに
+            document.getElementById(`step-${currentStep}`)?.classList.remove('active');
+            
+            // 新しいステップをアクティブに
+            currentStep = step;
+            document.getElementById(`step-${currentStep}`)?.classList.add('active');
+        };
+
+        // Vue3アプリが読み込まれたら
+        window.addEventListener('load', () => {
+            updateLoadingStep(2);
+        });
+
+        // WebGazerが読み込まれたら
+        const checkWebGazer = setInterval(() => {
+            if (typeof webgazer !== 'undefined') {
+                updateLoadingStep(3);
+                clearInterval(checkWebGazer);
                 
-                <div class="camera-controls">
-                    <div class="camera-select-group">
-                        <label for="cameraSelect">カメラ選択:</label>
-                        <select id="cameraSelect" class="camera-select">
-                            <option value="">カメラを選択してください</option>
-                        </select>
-                        <button id="refreshCameraBtn" class="control-btn small">🔄</button>
-                    </div>
+                // WebGazer初期化後
+                setTimeout(() => {
+                    updateLoadingStep(4);
                     
-                    <div class="calibration-controls">
-                        <button id="startCalibrationBtn" class="primary-btn" disabled>
-                            👁️ キャリブレーション開始
-                        </button>
-                        <button id="resetCalibrationBtn" class="secondary-btn" disabled>
-                            🔄 リセット
-                        </button>
-                    </div>
-                    
-                    <div class="calibration-status" id="calibrationStatus">
-                        カメラを選択してください
-                    </div>
-                </div>
-            </section>
+                    // ローディング画面を徐々に非表示
+                    setTimeout(() => {
+                        const loading = document.getElementById('loading');
+                        loading.style.opacity = '0';
+                        loading.style.transition = 'opacity 0.5s ease';
+                        
+                        setTimeout(() => {
+                            loading.style.display = 'none';
+                        }, 500);
+                    }, 1000);
+                }, 2000);
+            }
+        }, 100);
 
-            <!-- 文字盤・入力領域 -->
-            <section class="input-section">
-                <!-- ドウェル設定 -->
-                <div class="dwell-settings">
-                    <label for="dwellTime">選択時間:</label>
-                    <input type="range" id="dwellTime" min="500" max="3000" step="100" value="1500">
-                    <span id="dwellTimeValue">1.5秒</span>
-                </div>
-
-                <!-- 50音文字盤 -->
-                <div class="character-board" id="characterBoard">
-                    <div class="character-grid" id="characterGrid">
-                        <!-- 50音文字盤がここに生成される -->
-                    </div>
-                </div>
-
-                <!-- 特殊機能ボタン -->
-                <div class="function-buttons">
-                    <button class="function-btn space-btn" data-char=" ">スペース</button>
-                    <button class="function-btn delete-btn" data-action="delete">削除</button>
-                    <button class="function-btn clear-btn" data-action="clear">全削除</button>
-                </div>
-            </section>
-        </main>
-
-        <!-- テキスト表示・出力領域 -->
-        <section class="output-section">
-            <div class="text-display">
-                <textarea id="messageOutput" readonly placeholder="視線で文字を選択してメッセージを作成..."></textarea>
-                <div class="text-info">
-                    <span class="char-count">
-                        <span id="charCount">0</span>/100文字
-                    </span>
-                </div>
-            </div>
-
-            <div class="output-controls">
-                <button id="speakBtn" class="speak-btn primary-btn" disabled>
-                    🔊 読み上げ
+        // エラーハンドリング
+        window.addEventListener('error', (e) => {
+            console.error('アプリケーションエラー:', e);
+            document.getElementById('loading').innerHTML = `
+                <h1>⚠️ エラーが発生しました</h1>
+                <p style="margin: 20px 0; text-align: center;">
+                    ${e.message || 'アプリケーションの読み込みに失敗しました'}
+                </p>
+                <button onclick="window.location.reload()" 
+                        style="padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    再読み込み
                 </button>
-                <button id="copyBtn" class="control-btn" disabled>
-                    📋 コピー
-                </button>
-            </div>
-        </section>
+            `;
+        });
 
-        <!-- プリセット領域 -->
-        <section class="presets-section">
-            <div class="presets-header">
-                <h3>よく使う言葉</h3>
-                <button id="addPresetBtn" class="control-btn small" disabled>
-                    ➕ 追加
-                </button>
-            </div>
-            <div class="presets-grid" id="presetsGrid">
-                <!-- プリセットがここに表示される -->
-            </div>
-        </section>
-    </div>
+        // WebGazerが利用可能かチェック
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.warn('このブラウザはWebRTCをサポートしていません');
+        }
 
-    <!-- 設定モーダル -->
-    <div id="settingsModal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2>設定</h2>
-                <button id="closeSettingsBtn" class="close-btn">✕</button>
-            </div>
-            <div class="modal-body">
-                <div class="setting-section">
-                    <h3>音声設定</h3>
-                    <div class="setting-item">
-                        <label for="voiceSelect">音声タイプ:</label>
-                        <select id="voiceSelect">
-                            <option value="">音声を選択...</option>
-                        </select>
-                    </div>
-                    <div class="setting-item">
-                        <label for="speechRate">話速:</label>
-                        <input type="range" id="speechRate" min="0.5" max="2.0" step="0.1" value="1.0">
-                        <span id="speechRateValue">1.0</span>
-                    </div>
-                    <div class="setting-item">
-                        <label for="speechVolume">音量:</label>
-                        <input type="range" id="speechVolume" min="0" max="1" step="0.1" value="1.0">
-                        <span id="speechVolumeValue">1.0</span>
-                    </div>
-                    <button id="testSpeechBtn" class="control-btn">🔊 音声テスト</button>
-                </div>
-
-                <div class="setting-section">
-                    <h3>視線設定</h3>
-                    <div class="setting-item">
-                        <label for="gazePointSize">ガゼポイントサイズ:</label>
-                        <input type="range" id="gazePointSize" min="5" max="25" step="5" value="10">
-                        <span id="gazePointSizeValue">10px</span>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="showGazePoint" checked>
-                            ガゼポイントを表示
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="gazeSmoothing" checked>
-                            視線データのスムージング
-                        </label>
-                    </div>
-                </div>
-
-                <div class="setting-section">
-                    <h3>表示設定</h3>
-                    <div class="setting-item">
-                        <label>
-                            <input type="checkbox" id="highContrast">
-                            高コントラストモード
-                        </label>
-                    </div>
-                    <div class="setting-item">
-                        <label for="fontSize">文字サイズ:</label>
-                        <select id="fontSize">
-                            <option value="normal">標準</option>
-                            <option value="large">大きい</option>
-                            <option value="extra-large">特大</option>
-                        </select>
-                    </div>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <button id="saveSettingsBtn" class="primary-btn">保存</button>
-                <button id="resetSettingsBtn" class="secondary-btn">リセット</button>
-            </div>
-        </div>
-    </div>
-
-    <!-- キャリブレーション画面 -->
-    <div id="calibrationOverlay" class="calibration-overlay">
-        <div class="calibration-content">
-            <h2 id="calibrationTitle">視線キャリブレーション</h2>
-            <p id="calibrationInstructions">画面上の赤い点を順番に見つめてください</p>
-            <div class="calibration-progress">
-                <span id="calibrationStep">0</span> / <span id="calibrationTotal">13</span>
-            </div>
-            <button id="cancelCalibrationBtn" class="secondary-btn">キャンセル</button>
-        </div>
-        <div class="calibration-points-container" id="calibrationPointsContainer">
-            <!-- キャリブレーションポイントがここに表示される -->
-        </div>
-    </div>
-
-    <!-- 進捗表示 -->
-    <div id="progressIndicator" class="progress-indicator">
-        <div class="progress-circle">
-            <svg class="progress-svg" width="60" height="60">
-                <circle class="progress-bg" cx="30" cy="30" r="25"></circle>
-                <circle class="progress-fill" cx="30" cy="30" r="25"></circle>
-            </svg>
-            <div class="progress-text">0%</div>
-        </div>
-    </div>
-
-    <!-- JavaScript -->
-    <script src="https://webgazer.cs.brown.edu/webgazer.js"></script>
-    <script src="js/cameraManager.js"></script>
-    <script src="js/eyeTrackingAdvanced.js"></script>
-    <script src="js/characterBoard.js"></script>
-    <script src="js/speechEngine.js"></script>
-    <script src="js/presetManager.js"></script>
-    <script src="js/settingsManager.js"></script>
-    <script src="js/app.js"></script>
+        // カメラ許可のチェック
+        navigator.permissions?.query({name: 'camera'}).then((result) => {
+            if (result.state === 'denied') {
+                console.warn('カメラアクセスが拒否されています');
+            }
+        });
+    </script>
 </body>
 </html>
