@@ -1,34 +1,32 @@
 import { ref, reactive, computed } from 'vue'
 
-export function useCalibration() {
+export function useCalibration(handleGazeDataCallback = null) {
   // キャリブレーション状態
   const isCalibrating = ref(false)
   const currentIndex = ref(0)
   const isCompleted = ref(false)
   
-  // キャリブレーション設定
+  // モダンキャリブレーション設定（ユーザーフレンドリー）
   const settings = reactive({
-    requiredStableTime: 2000, // 2秒間安定
-    accuracyThreshold: 60,    // 60px以内
-    dwellTime: 1500          // ドウェル時間
+    requiredStableTime: 1200, // 1.2秒で高速化
+    accuracyThreshold: 80,    // 80pxでユーザーフレンドリーに
+    dwellTime: 1000,          // ドウェル時間短縮
+    minSamples: 15,           // 最小サンプル数
+    stabilityThreshold: 0.7,  // 安定性闾値
+    adaptiveMode: true        // アダプティブモード
   })
 
-  // キャリブレーションポイント生成（シンプル版：9点）
+  // モダンキャリブレーションポイント生成（5点 + ユーザーフレンドリー順序）
   const generateCalibrationPoints = () => {
-    const margin = 0.15 // 画面端から15%のマージン
+    const margin = 0.12 // 画面端から12%のマージン（少し狭く）
+    
+    // 中央から始めてユーザーにやさしい順序で配置
     return [
-      // 四隅
-      { x: margin, y: margin },
-      { x: 1 - margin, y: margin },
-      { x: margin, y: 1 - margin },
-      { x: 1 - margin, y: 1 - margin },
-      
-      // 中央の十字
-      { x: 0.5, y: 0.5 },
-      { x: 0.5, y: margin },
-      { x: 0.5, y: 1 - margin },
-      { x: margin, y: 0.5 },
-      { x: 1 - margin, y: 0.5 }
+      { x: 0.5, y: 0.5, id: 'center', description: '中央から始めましょう' },
+      { x: margin, y: margin, id: 'top-left', description: '左上を見つめてください' },
+      { x: 1 - margin, y: margin, id: 'top-right', description: '右上を見つめてください' },
+      { x: margin, y: 1 - margin, id: 'bottom-left', description: '左下を見つめてください' },
+      { x: 1 - margin, y: 1 - margin, id: 'bottom-right', description: '最後は右下です' }
     ]
   }
 
@@ -80,10 +78,18 @@ export function useCalibration() {
     isCompleted.value = false
     resetGazeTracking()
     
-    // キャリブレーション用のガゼリスナーを設定
+    // キャリブレーション用のガゼリスナーを設定（視覚更新も継続）
     if (setGazeListener) {
       const success = setGazeListener((data, timestamp) => {
         console.log('📊 キャリブレーション視線データ受信:', { x: Math.round(data?.x || 0), y: Math.round(data?.y || 0) })
+        
+        // 視覚的な視線ポイント更新を継続（青い丸の表示）
+        if (handleGazeDataCallback && typeof handleGazeDataCallback === 'function') {
+          console.log('👁️ 視覚更新も実行中...')
+          handleGazeDataCallback(data, timestamp)
+        }
+        
+        // キャリブレーション処理も実行
         processGazeData(data)
       })
       
@@ -120,14 +126,26 @@ export function useCalibration() {
     )
     
     gazeTracking.distance = distance
+    gazeTracking.samples = (gazeTracking.samples || 0) + 1
+    
+    // スムージング用の最近の距離を保存
+    gazeTracking.recentDistances = gazeTracking.recentDistances || []
+    gazeTracking.recentDistances.push(distance)
+    if (gazeTracking.recentDistances.length > 5) {
+      gazeTracking.recentDistances.shift()
+    }
+    
+    // 平滑化された距離を計算
+    const avgDistance = gazeTracking.recentDistances.reduce((a, b) => a + b, 0) / gazeTracking.recentDistances.length
 
     // デバッグ情報
     if (Math.random() < 0.3) { // 30%の確率でログ
       console.log(`🎯 視線追跡: 視線(${Math.round(gazeData.x)}, ${Math.round(gazeData.y)}) → ターゲット(${Math.round(targetX)}, ${Math.round(targetY)}) = ${Math.round(distance)}px`)
     }
 
-    // 精度判定（シンプル版）
-    const isAccurate = distance < settings.accuracyThreshold
+    // 精度判定（スムージング版 + アダプティブ）
+    const isAccurate = avgDistance < settings.accuracyThreshold
+    const isVeryAccurate = avgDistance < settings.accuracyThreshold * 0.6 // 非常に精度が高い場合
     
     if (isAccurate) {
       if (!gazeTracking.isStable) {
@@ -137,16 +155,30 @@ export function useCalibration() {
       }
       
       const stableDuration = Date.now() - gazeTracking.stableStartTime
-      gazeTracking.progress = Math.min(stableDuration / settings.requiredStableTime, 1)
       
-      // 進行状況をログ
-      if (Math.random() < 0.2) { // 20%の確率でログ
-        console.log(`⏳ 安定性進行: ${Math.round(gazeTracking.progress * 100)}% (${Math.round(stableDuration)}ms / ${settings.requiredStableTime}ms)`)
+      // アダプティブ時間計算（精度が高いほど早く進む）
+      let requiredTime = settings.requiredStableTime
+      if (settings.adaptiveMode) {
+        if (isVeryAccurate) {
+          requiredTime = settings.requiredStableTime * 0.7 // 30%短縮
+        }
+        // 十分なサンプル数があれば早期完了を許可
+        if (gazeTracking.samples >= settings.minSamples && isVeryAccurate) {
+          requiredTime = Math.min(requiredTime, settings.requiredStableTime * 0.5)
+        }
+      }
+      
+      gazeTracking.progress = Math.min(stableDuration / requiredTime, 1)
+      
+      // ユーザーフレンドリーフィードバック
+      if (Math.random() < 0.1) { // 10%でログでスパムを防ぐ
+        const pointDesc = currentPoint.value.description || `ポイント ${currentIndex.value + 1}`
+        console.log(`🎯 ${pointDesc}: ${Math.round(gazeTracking.progress * 100)}% (精度: ${Math.round(avgDistance)}px)`)
       }
       
       // 十分な時間安定していれば次へ
       if (gazeTracking.progress >= 1) {
-        console.log(`🎉 ポイント ${currentIndex.value + 1} 完了！`)
+        console.log(`🎉 ${currentPoint.value.description || 'ポイント'} キャリブレーション完了！`)
         recordCalibrationPoint()
         proceedToNext()
       }
@@ -157,6 +189,14 @@ export function useCalibration() {
         resetGazeTracking()
       }
     }
+    
+    // タイムアウト防止（最大時間で強制進行）
+    const totalTime = Date.now() - (gazeTracking.pointStartTime || Date.now())
+    if (totalTime > (settings.requiredStableTime * 4)) {
+      console.log('⏰ タイムアウトで次のポイントへ進みます')
+      recordCalibrationPoint()
+      proceedToNext()
+    }
   }
 
   // 視線追跡状態をリセット
@@ -165,6 +205,9 @@ export function useCalibration() {
     gazeTracking.stableStartTime = null
     gazeTracking.progress = 0
     gazeTracking.distance = Infinity
+    gazeTracking.samples = 0
+    gazeTracking.recentDistances = []
+    gazeTracking.pointStartTime = Date.now() // ポイント開始時刻を記録
   }
 
   // キャリブレーションポイントを記録

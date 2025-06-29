@@ -157,7 +157,8 @@ const {
   startTracking,
   stopTracking,
   setGazeListener,
-  clearGazeListener
+  clearGazeListener,
+  handleGazeData
 } = useWebGazer()
 
 // カメラ管理
@@ -173,7 +174,7 @@ const {
 // ローカル状態
 const isCalibrated = ref(false)
 
-// キャリブレーション統合
+// キャリブレーション統合（視覚更新ハンドラーを渡す）
 const {
   isCalibrating,
   currentIndex,
@@ -184,7 +185,7 @@ const {
   processGazeData,
   completeCalibration,
   cancelCalibration
-} = useCalibration()
+} = useCalibration(handleGazeData)
 
 // ステータス表示
 const statusClass = computed(() => {

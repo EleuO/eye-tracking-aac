@@ -266,6 +266,7 @@ export function useWebGazer() {
     stopTracking,
     stopWebGazer,
     setGazeListener,
-    clearGazeListener
+    clearGazeListener,
+    handleGazeData // キャリブレーション中の視覚更新用
   }
 }
