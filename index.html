@@ -7,10 +7,11 @@
     <meta name="description" content="視線追跡技術を使用した日本語対応の意思伝達支援装置">
     <meta name="keywords" content="AAC, 視線追跡, 意思伝達, アクセシビリティ, webgazer">
     
-    <!-- MediaPipeベースシステム - WebGazer.js不要 -->
+    <!-- シンプル版AACシステム - 複雑な初期化不要 -->
     <script>
-        console.log('🚀 MediaPipe Eye Tracking AAC System v3.0');
-        console.log('📋 WebGazer.js → MediaPipe完全移行完了');
+        console.log('🚀 Simple AAC System v3.1 - 即座使用可能');
+        console.log('📋 MediaPipe初期化問題を回避するシンプル版');
+        console.log('🎯 マウス・キーボード・タッチで即座利用開始');
     </script>
     
     <!-- PWA Support -->
@@ -93,13 +94,13 @@
 <body>
     <!-- 初期ローディング画面 -->
     <div id="loading">
-        <h1>🎯 視線入力式AAC</h1>
-        <div class="subtitle">Vue3版 - 初期化中...</div>
+        <h1>🎯 シンプル視線AAC</h1>
+        <div class="subtitle">即座使用可能版 - 読み込み中...</div>
         <div class="spinner"></div>
         <div class="loading-steps">
             <div class="loading-step active" id="step-1">📦 Vue3アプリケーション読み込み中...</div>
-            <div class="loading-step" id="step-2">🎯 MediaPipe Face Detection初期化中...</div>
-            <div class="loading-step" id="step-3">🎬 9ゾーンAAC システム準備中...</div>
+            <div class="loading-step" id="step-2">🎯 9ゾーンシステム準備中...</div>
+            <div class="loading-step" id="step-3">🎮 マウス・キーボード入力システム初期化中...</div>
             <div class="loading-step" id="step-4">✅ 準備完了！</div>
         </div>
     </div>
@@ -128,22 +129,26 @@
             updateLoadingStep(2);
         });
 
-        // MediaPipeアプリ読み込み待機
-        const checkMediaPipeApp = setInterval(() => {
+        // シンプルAACアプリ読み込み待機
+        const checkSimpleApp = setInterval(() => {
             // Vue3アプリがマウントされたらローディング終了
-            if (document.querySelector('#app .mediapipe-aac-app')) {
-                updateLoadingStep(4);
-                clearInterval(checkMediaPipeApp);
-                
-                // ローディング画面を徐々に非表示
+            if (document.querySelector('#app .simple-aac-app')) {
+                updateLoadingStep(2);
+                setTimeout(() => updateLoadingStep(3), 200);
                 setTimeout(() => {
-                    const loading = document.getElementById('loading');
-                    loading.style.opacity = '0';
-                    loading.style.transition = 'opacity 0.5s ease';
+                    updateLoadingStep(4);
+                    clearInterval(checkSimpleApp);
                     
+                    // ローディング画面を徐々に非表示
                     setTimeout(() => {
-                        loading.style.display = 'none';
-                    }, 500);
+                        const loading = document.getElementById('loading');
+                        loading.style.opacity = '0';
+                        loading.style.transition = 'opacity 0.5s ease';
+                        
+                        setTimeout(() => {
+                            loading.style.display = 'none';
+                        }, 500);
+                    }, 300);
                 }, 500);
             }
         }, 100);
@@ -163,17 +168,14 @@
             `;
         });
 
-        // MediaPipeシステム要件チェック
+        // シンプルAACシステム要件チェック
+        console.log('✅ シンプル版はカメラ不要 - マウス・キーボード・タッチで動作');
+        
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.warn('このブラウザはWebRTCをサポートしていません - MediaPipeには必須です');
+            console.log('ℹ️ このブラウザはWebRTCをサポートしていませんが、シンプル版では問題ありません');
+        } else {
+            console.log('ℹ️ 将来的にカメラ機能追加時に使用可能');
         }
-
-        // カメラ許可のチェック
-        navigator.permissions?.query({name: 'camera'}).then((result) => {
-            if (result.state === 'denied') {
-                console.warn('カメラアクセスが拒否されています - MediaPipe顔検出には必須です');
-            }
-        });
     </script>
 </body>
 </html>

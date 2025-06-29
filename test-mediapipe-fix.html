@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MediaPipe Fix Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background: #f0f0f0;
+        }
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .status {
+            padding: 10px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+        .status.loading { background: #3498db; color: white; }
+        .status.success { background: #27ae60; color: white; }
+        .status.fallback { background: #f39c12; color: white; }
+        .status.error { background: #e74c3c; color: white; }
+        .simulation-area {
+            width: 100%;
+            height: 200px;
+            border: 2px solid #3498db;
+            position: relative;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-radius: 10px;
+            overflow: hidden;
+            cursor: crosshair;
+        }
+        .mouse-tracker {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background: #e74c3c;
+            border-radius: 50%;
+            pointer-events: none;
+            transform: translate(-50%, -50%);
+            box-shadow: 0 0 20px rgba(231, 76, 60, 0.8);
+        }
+        .zone-grid {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            gap: 2px;
+        }
+        .zone {
+            border: 1px solid rgba(255,255,255,0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            transition: all 0.3s ease;
+        }
+        .zone.active {
+            background: rgba(46, 204, 113, 0.8);
+            transform: scale(1.05);
+        }
+        .debug-info {
+            background: #2c3e50;
+            color: white;
+            padding: 15px;
+            border-radius: 5px;
+            font-family: monospace;
+            font-size: 0.9rem;
+            white-space: pre-line;
+        }
+    </style>
+</head>
+<body>
+    <h1>🎯 MediaPipe AAC システム修正テスト</h1>
+    
+    <div class="test-section">
+        <h2>📱 システム状態</h2>
+        <div id="system-status" class="status loading">初期化中...</div>
+        <div id="mode-info"></div>
+    </div>
+
+    <div class="test-section">
+        <h2>🖱️ フォールバック操作テスト</h2>
+        <p>マウスを下のエリア内で動かしてください。MediaPipeが利用できない場合のフォールバック動作をテストできます。</p>
+        
+        <div class="simulation-area" id="simulation-area">
+            <div class="mouse-tracker" id="mouse-tracker"></div>
+            <div class="zone-grid">
+                <div class="zone" data-zone="0">左上</div>
+                <div class="zone" data-zone="1">中央上</div>
+                <div class="zone" data-zone="2">右上</div>
+                <div class="zone" data-zone="3">左中</div>
+                <div class="zone" data-zone="4">中央</div>
+                <div class="zone" data-zone="5">右中</div>
+                <div class="zone" data-zone="6">左下</div>
+                <div class="zone" data-zone="7">中央下</div>
+                <div class="zone" data-zone="8">右下</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>🔍 デバッグ情報</h2>
+        <div id="debug-info" class="debug-info">初期化中...</div>
+    </div>
+
+    <script>
+        // システム状態の管理
+        let systemStatus = 'loading';
+        let mousePosition = { x: 0, y: 0 };
+        let currentZone = null;
+        let faceData = {
+            x: 320, y: 240,
+            headPose: { yaw: 0, pitch: 0, roll: 0 },
+            confidence: 0
+        };
+
+        // DOM要素の取得
+        const statusElement = document.getElementById('system-status');
+        const modeInfoElement = document.getElementById('mode-info');
+        const mouseTracker = document.getElementById('mouse-tracker');
+        const simulationArea = document.getElementById('simulation-area');
+        const debugInfo = document.getElementById('debug-info');
+        const zones = document.querySelectorAll('.zone');
+
+        // MediaPipe初期化のシミュレーション
+        async function simulateMediaPipeInitialization() {
+            updateStatus('loading', 'MediaPipe初期化中...');
+            
+            // 15秒タイムアウトのシミュレーション
+            const initPromise = new Promise((resolve, reject) => {
+                // 実際のMediaPipe初期化をシミュレート（失敗）
+                setTimeout(() => {
+                    reject(new Error('MediaPipe初期化タイムアウト (15秒)'));
+                }, 3000); // 3秒で失敗をシミュレート
+            });
+
+            try {
+                await Promise.race([
+                    initPromise,
+                    new Promise((_, reject) => 
+                        setTimeout(() => reject(new Error('MediaPipe初期化タイムアウト (15秒)')), 15000)
+                    )
+                ]);
+                
+                updateStatus('success', 'MediaPipe初期化完了');
+                modeInfoElement.innerHTML = '<strong>🎯 MediaPipeモード:</strong> 顔検出による視線追跡';
+                
+            } catch (error) {
+                console.log('MediaPipe初期化失敗、フォールバックモードに切り替え');
+                await initializeFallbackMode();
+            }
+        }
+
+        // フォールバックモードの初期化
+        async function initializeFallbackMode() {
+            updateStatus('fallback', 'フォールバックモード - マウス操作');
+            modeInfoElement.innerHTML = `
+                <strong>🖱️ フォールバックモード:</strong> マウス/キーボード操作<br>
+                <small>MediaPipeが利用できないため、代替システムを使用中</small>
+            `;
+
+            // マウス追跡の開始
+            setupMouseTracking();
+            setupKeyboardControls();
+            
+            faceData.confidence = 0.8;
+            systemStatus = 'fallback';
+            updateDebugInfo();
+        }
+
+        // ステータス更新
+        function updateStatus(type, message) {
+            statusElement.className = `status ${type}`;
+            statusElement.textContent = message;
+            systemStatus = type;
+        }
+
+        // マウス追跡の設定
+        function setupMouseTracking() {
+            simulationArea.addEventListener('mousemove', (e) => {
+                const rect = simulationArea.getBoundingClientRect();
+                const relativeX = (e.clientX - rect.left) / rect.width;
+                const relativeY = (e.clientY - rect.top) / rect.height;
+                
+                mousePosition.x = e.clientX - rect.left;
+                mousePosition.y = e.clientY - rect.top;
+                
+                // マウストラッカーの位置更新
+                mouseTracker.style.left = mousePosition.x + 'px';
+                mouseTracker.style.top = mousePosition.y + 'px';
+                
+                // 頭部姿勢の計算
+                const centerX = 0.5;
+                const centerY = 0.5;
+                faceData.headPose.yaw = (relativeX - centerX) * 60;  // -30° ~ +30°
+                faceData.headPose.pitch = (relativeY - centerY) * 40; // -20° ~ +20°
+                
+                // ゾーン検出
+                detectZone(relativeX, relativeY);
+                updateDebugInfo();
+            });
+        }
+
+        // キーボード操作の設定
+        function setupKeyboardControls() {
+            document.addEventListener('keydown', (e) => {
+                const moveStep = 20;
+                let newX = mousePosition.x;
+                let newY = mousePosition.y;
+                
+                switch(e.key) {
+                    case 'ArrowUp':
+                        newY = Math.max(0, newY - moveStep);
+                        break;
+                    case 'ArrowDown':
+                        newY = Math.min(simulationArea.clientHeight, newY + moveStep);
+                        break;
+                    case 'ArrowLeft':
+                        newX = Math.max(0, newX - moveStep);
+                        break;
+                    case 'ArrowRight':
+                        newX = Math.min(simulationArea.clientWidth, newX + moveStep);
+                        break;
+                    default:
+                        return;
+                }
+                
+                mousePosition.x = newX;
+                mousePosition.y = newY;
+                mouseTracker.style.left = newX + 'px';
+                mouseTracker.style.top = newY + 'px';
+                
+                const relativeX = newX / simulationArea.clientWidth;
+                const relativeY = newY / simulationArea.clientHeight;
+                detectZone(relativeX, relativeY);
+                updateDebugInfo();
+                e.preventDefault();
+            });
+        }
+
+        // ゾーン検出
+        function detectZone(relativeX, relativeY) {
+            let targetCol = 1; // デフォルト中央
+            let targetRow = 1;
+            
+            if (relativeX < 0.33) targetCol = 0;
+            else if (relativeX > 0.67) targetCol = 2;
+            
+            if (relativeY < 0.33) targetRow = 0;
+            else if (relativeY > 0.67) targetRow = 2;
+            
+            const zoneId = targetRow * 3 + targetCol;
+            
+            // ゾーンハイライトの更新
+            zones.forEach((zone, index) => {
+                zone.classList.toggle('active', index === zoneId);
+            });
+            
+            if (currentZone !== zoneId) {
+                currentZone = zoneId;
+                console.log(`ゾーン変更: ${zoneId} (${zones[zoneId].textContent})`);
+            }
+        }
+
+        // デバッグ情報の更新
+        function updateDebugInfo() {
+            const info = `システム状態: ${systemStatus}
+マウス位置: (${Math.round(mousePosition.x)}, ${Math.round(mousePosition.y)})
+頭部姿勢: Yaw=${Math.round(faceData.headPose.yaw)}°, Pitch=${Math.round(faceData.headPose.pitch)}°
+現在のゾーン: ${currentZone !== null ? currentZone + ' (' + zones[currentZone].textContent + ')' : 'なし'}
+信頼度: ${Math.round(faceData.confidence * 100)}%
+動作モード: ${systemStatus === 'fallback' ? 'フォールバック (マウス)' : 'MediaPipe'}
+
+💡 操作方法:
+- マウス: エリア内で移動
+- キーボード: 矢印キーで移動
+- タッチ: タップして移動`;
+
+            debugInfo.textContent = info;
+        }
+
+        // 初期化の開始
+        document.addEventListener('DOMContentLoaded', () => {
+            console.log('🚀 MediaPipe修正テスト開始');
+            simulateMediaPipeInitialization();
+        });
+    </script>
+</body>
+</html>

@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🎯 シンプルAAC - テスト</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            padding: 2rem;
+            min-height: 100vh;
+        }
+        
+        .test-container {
+            max-width: 800px;
+            margin: 0 auto;
+            text-align: center;
+        }
+        
+        .status {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-bottom: 2rem;
+        }
+        
+        .zone-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 10px;
+            max-width: 600px;
+            margin: 2rem auto;
+        }
+        
+        .zone {
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 10px;
+            padding: 2rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .zone:hover {
+            background: rgba(52, 152, 219, 0.3);
+            border-color: #3498db;
+            transform: scale(1.05);
+        }
+        
+        .zone.selected {
+            background: rgba(46, 204, 113, 0.5);
+            border-color: #2ecc71;
+        }
+        
+        .zone-name {
+            font-weight: bold;
+            margin-bottom: 0.5rem;
+        }
+        
+        .zone-number {
+            font-size: 2rem;
+            opacity: 0.7;
+        }
+        
+        .instructions {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 10px;
+            margin-top: 2rem;
+        }
+        
+        .selected-info {
+            background: rgba(46, 204, 113, 0.2);
+            padding: 1rem;
+            border-radius: 10px;
+            margin-top: 1rem;
+        }
+        
+        .btn {
+            background: #3498db;
+            color: white;
+            border: none;
+            padding: 0.8rem 1.5rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 0.5rem;
+        }
+        
+        .btn:hover {
+            background: #2980b9;
+        }
+    </style>
+</head>
+<body>
+    <div class="test-container">
+        <h1>🎯 シンプルAAC テスト</h1>
+        
+        <div class="status">
+            <h2>システム状態: <span id="status">✅ 準備完了</span></h2>
+            <div>最終選択: <span id="lastSelection">なし</span></div>
+            <div>選択回数: <span id="selectionCount">0</span></div>
+        </div>
+        
+        <div class="zone-grid" id="zoneGrid">
+            <div class="zone" data-zone="0">
+                <div class="zone-name">左上</div>
+                <div class="zone-number">1</div>
+            </div>
+            <div class="zone" data-zone="1">
+                <div class="zone-name">上中央</div>
+                <div class="zone-number">2</div>
+            </div>
+            <div class="zone" data-zone="2">
+                <div class="zone-name">右上</div>
+                <div class="zone-number">3</div>
+            </div>
+            <div class="zone" data-zone="3">
+                <div class="zone-name">左中央</div>
+                <div class="zone-number">4</div>
+            </div>
+            <div class="zone" data-zone="4">
+                <div class="zone-name">中央</div>
+                <div class="zone-number">5</div>
+            </div>
+            <div class="zone" data-zone="5">
+                <div class="zone-name">右中央</div>
+                <div class="zone-number">6</div>
+            </div>
+            <div class="zone" data-zone="6">
+                <div class="zone-name">左下</div>
+                <div class="zone-number">7</div>
+            </div>
+            <div class="zone" data-zone="7">
+                <div class="zone-name">下中央</div>
+                <div class="zone-number">8</div>
+            </div>
+            <div class="zone" data-zone="8">
+                <div class="zone-name">右下</div>
+                <div class="zone-number">9</div>
+            </div>
+        </div>
+        
+        <div class="instructions">
+            <h3>💡 操作方法</h3>
+            <p><strong>🖱️ マウス:</strong> ゾーンをクリックして選択</p>
+            <p><strong>⌨️ キーボード:</strong> 1-9キーで直接選択</p>
+            <p><strong>ESC:</strong> 選択をクリア</p>
+        </div>
+        
+        <div>
+            <button class="btn" onclick="clearSelection()">🗑️ クリア</button>
+            <button class="btn" onclick="testKeyboard()">⌨️ キーボードテスト</button>
+            <button class="btn" onclick="runAutoTest()">🤖 自動テスト</button>
+        </div>
+        
+        <div id="selectedInfo" class="selected-info" style="display: none;">
+            <h3>選択されたゾーン</h3>
+            <div id="selectedZoneName"></div>
+        </div>
+    </div>
+
+    <script>
+        console.log('🚀 シンプルAAC テストシステム開始');
+        
+        let selectedZone = null;
+        let selectionCount = 0;
+        const zones = [
+            '左上', '上中央', '右上',
+            '左中央', '中央', '右中央',
+            '左下', '下中央', '右下'
+        ];
+        
+        // ゾーン選択関数
+        function selectZone(zoneIndex) {
+            // 前の選択をクリア
+            document.querySelectorAll('.zone').forEach(z => z.classList.remove('selected'));
+            
+            // 新しい選択
+            const zoneElement = document.querySelector(`[data-zone="${zoneIndex}"]`);
+            if (zoneElement) {
+                zoneElement.classList.add('selected');
+                selectedZone = zoneIndex;
+                selectionCount++;
+                
+                // UI更新
+                document.getElementById('lastSelection').textContent = zones[zoneIndex];
+                document.getElementById('selectionCount').textContent = selectionCount;
+                
+                // 選択情報表示
+                const selectedInfo = document.getElementById('selectedInfo');
+                const zoneName = document.getElementById('selectedZoneName');
+                zoneName.textContent = `${zones[zoneIndex]} (ゾーン ${zoneIndex + 1})`;
+                selectedInfo.style.display = 'block';
+                
+                // 音声フィードバック
+                if ('speechSynthesis' in window) {
+                    const utterance = new SpeechSynthesisUtterance(zones[zoneIndex]);
+                    utterance.lang = 'ja-JP';
+                    utterance.rate = 1.2;
+                    speechSynthesis.speak(utterance);
+                }
+                
+                console.log(`✅ ゾーン選択: ${zones[zoneIndex]} (${zoneIndex + 1})`);
+            }
+        }
+        
+        // 選択クリア
+        function clearSelection() {
+            document.querySelectorAll('.zone').forEach(z => z.classList.remove('selected'));
+            selectedZone = null;
+            document.getElementById('selectedInfo').style.display = 'none';
+            console.log('🗑️ 選択クリア');
+        }
+        
+        // キーボードテスト
+        function testKeyboard() {
+            alert('1-9キーを押してゾーンを選択してください。ESCでクリアできます。');
+        }
+        
+        // 自動テスト
+        async function runAutoTest() {
+            console.log('🤖 自動テスト開始');
+            
+            for (let i = 0; i < 9; i++) {
+                selectZone(i);
+                await new Promise(resolve => setTimeout(resolve, 800));
+            }
+            
+            setTimeout(() => {
+                clearSelection();
+                console.log('🏁 自動テスト完了');
+            }, 1000);
+        }
+        
+        // イベントリスナー
+        document.addEventListener('DOMContentLoaded', () => {
+            // ゾーンクリックイベント
+            document.querySelectorAll('.zone').forEach((zone, index) => {
+                zone.addEventListener('click', () => selectZone(index));
+            });
+            
+            // キーボードイベント
+            document.addEventListener('keydown', (e) => {
+                const key = parseInt(e.key);
+                if (key >= 1 && key <= 9) {
+                    e.preventDefault();
+                    selectZone(key - 1);
+                }
+                
+                if (e.key === 'Escape') {
+                    clearSelection();
+                }
+            });
+            
+            console.log('✅ シンプルAAC テスト初期化完了');
+        });
+    </script>
+</body>
+</html>
