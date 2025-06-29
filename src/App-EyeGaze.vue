@@ -78,6 +78,51 @@
             </div>
           </div>
         </div>
+
+        <!-- 🎯 学習データ収集（革命的プロダクト開発用） -->
+        <div class="section">
+          <h3>🧠 学習データ収集</h3>
+          <div class="learning-controls">
+            <button 
+              @click="toggleLearning"
+              :class="['primary-btn', { 'recording': gazeLearner.isLogging.value }]"
+              :disabled="!faceTracker.isTracking.value"
+            >
+              {{ gazeLearner.isLogging.value ? '⏹️ 収集停止' : '🔴 収集開始' }}
+            </button>
+            
+            <div v-if="gazeLearner.isLogging.value" class="recording-status">
+              <div class="recording-indicator">📊 収集中...</div>
+              <div class="data-count">データ: {{ gazeLearner.currentSession.dataPoints.length }}件</div>
+              <div class="accuracy">精度: {{ gazeLearner.stats.accuracyRate }}%</div>
+            </div>
+            
+            <div v-if="!gazeLearner.isLogging.value && gazeLearner.totalDataPoints.value > 0" class="learning-stats">
+              <div class="stat-line">総セッション: {{ gazeLearner.loggedSessions.value }}</div>
+              <div class="stat-line">総データ: {{ gazeLearner.totalDataPoints.value }}件</div>
+              <div class="stat-line">品質: {{ gazeLearner.stats.dataQuality }}%</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 🔧 意図修正ボタン（学習データ収集中のみ表示） -->
+        <div class="section" v-if="gazeLearner.isLogging.value">
+          <h3>🔧 実際の視線修正</h3>
+          <div class="intention-correction">
+            <p class="correction-help">実際に見ていたゾーンをクリック:</p>
+            <div class="zone-buttons">
+              <button 
+                v-for="(zone, index) in zoneAAC.zones.value" 
+                :key="index"
+                @click="correctIntention(index)"
+                class="zone-btn"
+                :class="{ 'current-zone': index === zoneAAC.currentZone.value?.id }"
+              >
+                {{ index + 1 }}
+              </button>
+            </div>
+          </div>
+        </div>
       </aside>
 
       <!-- 中央パネル: 視線ゾーンインターフェース -->
@@ -255,12 +300,16 @@
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useOpenCVFaceTracker } from './composables/useOpenCVFaceTracker.js'
 import { useZoneBasedAAC } from './composables/useZoneBasedAAC.js'
+import { useGazeLearningLogger } from './composables/useGazeLearningLogger.js'
 
 // Face Tracker (OpenCV版)
 const faceTracker = useOpenCVFaceTracker()
 
 // Zone-based AAC System
 const zoneAAC = useZoneBasedAAC(faceTracker)
+
+// 🎯 学習データ収集システム（患者さんのため！）
+const gazeLearner = useGazeLearningLogger()
 
 // UI状態
 const showCamera = ref(true)
@@ -447,13 +496,29 @@ const stopTracking = async () => {
 }
 
 /**
- * 視線処理ループ開始
+ * 視線処理ループ開始（学習データ収集統合版）
  */
 const startGazeProcessing = () => {
   const processGaze = () => {
     if (faceTracker.isTracking.value) {
       // ゾーン選択処理を実行
       zoneAAC.processZoneSelection()
+      
+      // 🎯 学習データ自動収集（患者さんのため！）
+      if (gazeLearner.isLogging.value) {
+        const currentZone = zoneAAC.currentZone.value?.id || null
+        gazeLearner.logGazeEvent(
+          gazePoint.value,
+          faceTracker.faceData,
+          currentZone,
+          gazeLearner.currentSession.lastIntention
+        )
+        
+        // 意図がクリアされた場合（次のデータポイント用）
+        if (gazeLearner.currentSession.lastIntention !== null) {
+          gazeLearner.currentSession.lastIntention = null
+        }
+      }
     }
     
     if (faceTracker.isTracking.value) {
@@ -498,6 +563,38 @@ const formatTime = (timestamp) => {
     minute: '2-digit',
     second: '2-digit'
   })
+}
+
+/**
+ * 🎯 学習データ収集トグル（患者さんのための革命的システム開発）
+ */
+const toggleLearning = () => {
+  if (gazeLearner.isLogging.value) {
+    gazeLearner.stopLogging()
+    console.log('📊 学習データ収集停止 - お疲れ様でした！')
+  } else {
+    gazeLearner.startLogging()
+    console.log('🚀 学習データ収集開始 - 患者さんのために頑張りましょう！')
+  }
+}
+
+/**
+ * 🔧 意図修正（実際に見ていたゾーンの手動入力）
+ */
+const correctIntention = (zoneIndex) => {
+  gazeLearner.correctLastIntention(zoneIndex)
+  console.log(`✅ 意図修正: ゾーン${zoneIndex + 1}に修正しました`)
+  
+  // 視覚フィードバック
+  const zoneNames = ['左上', '上中央', '右上', '左中央', '中央', '右中央', '左下', '下中央', '右下']
+  
+  // 修正通知表示（簡易版）
+  if ('Notification' in window && Notification.permission === 'granted') {
+    new Notification('視線データ修正', {
+      body: `実際の視線: ${zoneNames[zoneIndex]}`,
+      icon: '/favicon.ico'
+    })
+  }
 }
 
 // ウォッチャー: エラー監視
@@ -732,6 +829,98 @@ input[type="checkbox"] {
 .debug-item {
   margin-bottom: 5px;
   white-space: nowrap;
+}
+
+/* 🎯 学習データ収集UI */
+.learning-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.primary-btn.recording {
+  background: #e74c3c;
+  animation: recording-pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes recording-pulse {
+  0% { background: #e74c3c; }
+  50% { background: #c0392b; }
+  100% { background: #e74c3c; }
+}
+
+.recording-status {
+  background: rgba(231, 76, 60, 0.1);
+  border: 1px solid #e74c3c;
+  border-radius: 5px;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.recording-indicator {
+  font-weight: bold;
+  color: #e74c3c;
+  margin-bottom: 5px;
+}
+
+.data-count, .accuracy {
+  margin-bottom: 3px;
+  font-family: monospace;
+}
+
+.learning-stats {
+  background: rgba(52, 152, 219, 0.1);
+  border: 1px solid #3498db;
+  border-radius: 5px;
+  padding: 10px;
+  font-size: 0.9rem;
+}
+
+.stat-line {
+  margin-bottom: 3px;
+  font-family: monospace;
+}
+
+/* 意図修正UI */
+.intention-correction {
+  background: rgba(241, 196, 15, 0.1);
+  border: 1px solid #f1c40f;
+  border-radius: 5px;
+  padding: 10px;
+}
+
+.correction-help {
+  margin: 0 0 10px 0;
+  font-size: 0.9rem;
+  color: #f1c40f;
+  font-weight: bold;
+}
+
+.zone-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 5px;
+}
+
+.zone-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  padding: 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.2s ease;
+}
+
+.zone-btn:hover {
+  background: rgba(241, 196, 15, 0.3);
+  border-color: #f1c40f;
+}
+
+.zone-btn.current-zone {
+  background: rgba(46, 204, 113, 0.3);
+  border-color: #2ecc71;
 }
 
 @keyframes pulse-gaze {
