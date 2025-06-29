@@ -35,9 +35,11 @@ export function useCameraManager() {
       
       console.log('📹 利用可能なカメラ:', cameras.value)
       
-      // デフォルトカメラを選択
+      // デフォルトカメラを選択して自動アクティブ化
       if (cameras.value.length > 0 && !selectedCamera.value) {
-        selectedCamera.value = cameras.value[0]
+        console.log('🎯 デフォルトカメラを自動選択中...', cameras.value[0].label)
+        await selectCamera(cameras.value[0])
+        console.log('✅ デフォルトカメラの自動アクティブ化完了')
       }
       
     } catch (err) {
@@ -101,11 +103,25 @@ export function useCameraManager() {
       
       isCameraActive.value = true
       console.log('✅ カメラ選択完了:', camera.label)
+      console.log('🎯 キャリブレーションボタンが有効になりました！ isCameraActive:', isCameraActive.value)
       
     } catch (err) {
       console.error('❌ カメラ選択エラー:', err)
       error.value = `カメラの選択に失敗しました: ${err.message}`
       isCameraActive.value = false
+      
+      // エラー後の自動リトライ機能
+      console.log('🔄 5秒後にカメラ再選択を試行します...')
+      setTimeout(async () => {
+        if (!isCameraActive.value && cameras.value.length > 0) {
+          console.log('🔄 カメラ自動リトライ中...')
+          try {
+            await selectCamera(cameras.value[0])
+          } catch (retryErr) {
+            console.error('❌ リトライ失敗:', retryErr)
+          }
+        }
+      }, 5000)
     }
   }
 
@@ -153,6 +169,22 @@ export function useCameraManager() {
     await getCameras()
   }
 
+  // カメラ状態をリセットして再初期化
+  const resetCameraState = async () => {
+    console.log('🔄 カメラ状態をリセット中...')
+    isCameraActive.value = false
+    error.value = null
+    
+    if (cameras.value.length > 0) {
+      try {
+        await selectCamera(cameras.value[0])
+        console.log('✅ カメラ状態リセット完了')
+      } catch (err) {
+        console.error('❌ カメラリセット失敗:', err)
+      }
+    }
+  }
+
   return {
     // 状態
     cameras,
@@ -167,6 +199,7 @@ export function useCameraManager() {
     selectCamera,
     getCameraStream,
     stopCamera,
-    initializeCameras
+    initializeCameras,
+    resetCameraState
   }
 }

@@ -217,12 +217,22 @@ const handleCameraSelect = async () => {
 
 // キャリブレーション開始
 const handleStartCalibration = () => {
+  console.log('🎯 キャリブレーションボタンが押されました')
+  console.log('🔍 状態確認:', {
+    isCameraActive: isCameraActive.value,
+    webgazerReady: webgazerReady.value,
+    isCalibrating: isCalibrating.value,
+    selectedCamera: selectedCamera.value?.label
+  })
+  
   if (!isCameraActive.value) {
+    console.error('❌ カメラがアクティブではありません')
     error.value = 'カメラを選択してください'
     return
   }
   
   if (!webgazerReady.value) {
+    console.error('❌ WebGazerが準備できていません')
     error.value = 'WebGazerが準備できていません'
     return
   }
@@ -260,6 +270,15 @@ onMounted(async () => {
 })
 
 // 視線データの処理はガゼリスナー内で直接行う
+
+// カメラ状態の監視
+watch(isCameraActive, (newValue, oldValue) => {
+  console.log('📹 isCameraActive状態変更:', { old: oldValue, new: newValue })
+  console.log('🎯 キャリブレーションボタン状態:', { 
+    disabled: !newValue || isCalibrating.value,
+    canCalibrate: newValue && !isCalibrating.value 
+  })
+}, { immediate: true })
 
 // キャリブレーション完了時の処理
 watch(isCalibrating, (newIsCalibrating, oldIsCalibrating) => {
