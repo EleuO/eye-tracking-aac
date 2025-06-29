@@ -412,27 +412,72 @@ const currentAccuracy = computed(() => {
 let gazeProcessingLoop = null
 
 /**
- * カメラ一覧取得
+ * カメラ一覧取得（USB対応強化版）
  */
 const getCameras = async () => {
   try {
-    await navigator.mediaDevices.getUserMedia({ video: true })
-    const devices = await navigator.mediaDevices.enumerateDevices()
-    const videoDevices = devices.filter(device => device.kind === 'videoinput')
+    console.log('🔍 カメラ検索開始...')
     
-    cameras.value = videoDevices.map(device => ({
+    // まず権限を取得（重要: これがないとUSBカメラが見えない）
+    const permissionStream = await navigator.mediaDevices.getUserMedia({ 
+      video: { 
+        width: { ideal: 640 },
+        height: { ideal: 480 }
+      } 
+    })
+    
+    console.log('✅ カメラ権限取得完了')
+    
+    // 権限取得後にストリームを停止
+    permissionStream.getTracks().forEach(track => track.stop())
+    
+    // 少し待ってからデバイス列挙（USBカメラ認識のため）
+    await new Promise(resolve => setTimeout(resolve, 500))
+    
+    const devices = await navigator.mediaDevices.enumerateDevices()
+    console.log('🔍 検出されたデバイス:', devices)
+    
+    const videoDevices = devices.filter(device => device.kind === 'videoinput')
+    console.log('📹 ビデオデバイス:', videoDevices)
+    
+    cameras.value = videoDevices.map((device, index) => ({
       deviceId: device.deviceId,
-      label: device.label || `カメラ ${cameras.value.length + 1}`,
-      groupId: device.groupId
+      label: device.label || `カメラ ${index + 1}`,
+      groupId: device.groupId,
+      // デバッグ用の詳細情報
+      raw: device
     }))
     
-    // デフォルトカメラ選択
-    if (cameras.value.length > 0 && !selectedCamera.value) {
-      selectedCamera.value = cameras.value[0]
+    // 🎯 USBカメラを優先的に選択
+    let defaultCamera = cameras.value[0]
+    
+    // ラベルでUSBカメラを探す
+    const usbCamera = cameras.value.find(camera => 
+      camera.label.toLowerCase().includes('usb') ||
+      camera.label.toLowerCase().includes('external') ||
+      camera.label.toLowerCase().includes('webcam') ||
+      !camera.label.toLowerCase().includes('built-in') &&
+      !camera.label.toLowerCase().includes('facetime')
+    )
+    
+    if (usbCamera) {
+      defaultCamera = usbCamera
+      console.log('🎯 USBカメラを優先選択:', usbCamera.label)
     }
     
-    console.log('📹 利用可能なカメラ:', cameras.value)
+    if (cameras.value.length > 0 && !selectedCamera.value) {
+      selectedCamera.value = defaultCamera
+    }
+    
+    console.log('📹 利用可能なカメラ一覧:')
+    cameras.value.forEach((camera, index) => {
+      console.log(`  ${index + 1}. ${camera.label} (${camera.deviceId.substring(0, 20)}...)`)
+    })
+    
+    console.log('🎯 選択されたカメラ:', selectedCamera.value?.label)
+    
   } catch (err) {
+    console.error('❌ カメラ取得エラー:', err)
     error.value = `カメラアクセスエラー: ${err.message}`
   }
 }
