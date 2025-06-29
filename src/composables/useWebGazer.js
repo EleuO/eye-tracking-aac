@@ -101,14 +101,37 @@ export function useWebGazer() {
 
   // ガゼリスナーを動的に設定（キャリブレーション用）
   const setGazeListener = (callback) => {
-    if (typeof webgazer !== 'undefined' && webgazer.isReady()) {
-      webgazer.setGazeListener(callback)
-      console.log('👁️ ガゼリスナーを設定しました')
-      return true
-    } else {
-      console.error('❌ WebGazerが準備できていません')
+    // 即座設定を試行
+    const setListener = () => {
+      if (typeof webgazer !== 'undefined' && webgazer.isReady()) {
+        webgazer.setGazeListener(callback)
+        console.log('👁️ ガゼリスナーを設定しました')
+        return true
+      }
       return false
     }
+    
+    // 即座設定を試行
+    if (setListener()) {
+      return true
+    }
+    
+    // 準備できていない場合はリトライで待機（カメラ切り替え対応）
+    console.log('⚠️ WebGazer準備中 - ガゼリスナー設定をリトライします...')
+    
+    let retries = 0
+    const maxRetries = 20 // 10秒間リトライ
+    const retryInterval = setInterval(() => {
+      if (setListener() || retries >= maxRetries) {
+        clearInterval(retryInterval)
+        if (retries >= maxRetries) {
+          console.error('❌ WebGazerガゼリスナー設定タイムアウト (カメラ切り替え後の問題かも)')
+        }
+      }
+      retries++
+    }, 500)
+    
+    return false
   }
 
   // ガゼリスナーをクリア

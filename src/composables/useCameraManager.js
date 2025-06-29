@@ -81,25 +81,59 @@ export function useCameraManager() {
         deviceId: camera.deviceId
       })
       
-      // WebGazerが準備できていればカメラを設定
+      // WebGazerキャリブレーション保持でカメラストリーム切り替え
       if (typeof webgazer !== 'undefined' && webgazer.isReady()) {
-        console.log('🔧 WebGazerにカメラを設定中...')
+        console.log('🔧 WebGazerカメラストリーム切り替え中...')
         
-        // setConstraintsは非推奨のため、WebGazerを再初期化でカメラ変更
         try {
-          await webgazer.end()
-          await new Promise(resolve => setTimeout(resolve, 500))
-          await webgazer.begin()
-          console.log('✅ WebGazerカメラ再初期化完了')
+          // 既存ストリームを停止
+          stream.getTracks().forEach(track => track.stop())
+          
+          // 新しいカメラストリームを取得
+          const newStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              deviceId: { exact: camera.deviceId },
+              width: { ideal: 1280 },
+              height: { ideal: 720 },
+              frameRate: { ideal: 30 }
+            }
+          })
+          
+          // WebGazerのビデオ要素を直接更新（キャリブレーションデータ保持）
+          const videoPreview = document.getElementById('webgazerVideoContainer')
+          if (videoPreview) {
+            const videoElement = videoPreview.querySelector('video')
+            if (videoElement) {
+              videoElement.srcObject = newStream
+              await videoElement.play()
+              console.log('✅ WebGazerビデオストリーム更新完了')
+            }
+          }
+          
+          // ストリームを更新後、WebGazerが程定するまで少し待つ
+          await new Promise(resolve => setTimeout(resolve, 1000))
+          
+          console.log('✅ WebGazerカメラ切り替え完了（キャリブレーション保持）')
+          
         } catch (err) {
-          console.log('⚠️ WebGazerカメラ再初期化エラー:', err)
+          console.log('⚠️ WebGazerカメラ切り替えエラー:', err)
+          
+          // フォールバック: 従来の再初期化方式
+          console.log('🔄 フォールバック: WebGazer再初期化を実行...')
+          try {
+            await webgazer.end()
+            await new Promise(resolve => setTimeout(resolve, 1000))
+            await webgazer.begin()
+            console.log('✅ WebGazerフォールバック再初期化完了')
+          } catch (fallbackErr) {
+            console.error('❌ WebGazerフォールバック失敗:', fallbackErr)
+          }
         }
       } else {
         console.log('⚠️ WebGazerが準備できていませんが、カメラは選択されました')
       }
       
-      // ストリームを一旦停止（WebGazerが管理するため）
-      stream.getTracks().forEach(track => track.stop())
+      // 注意: ストリームは上記でWebGazer更新時に既に停止済み
       
       isCameraActive.value = true
       console.log('✅ カメラ選択完了:', camera.label)

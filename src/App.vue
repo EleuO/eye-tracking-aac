@@ -204,13 +204,41 @@ const statusText = computed(() => {
   return '初期化中...'
 })
 
-// カメラ選択ハンドラー
+// カメラ選択ハンドラー（状態保持対応）
 const handleCameraSelect = async () => {
   if (selectedCamera.value) {
     try {
+      // 現在の状態を保存
+      const wasCalibrated = isCalibrated.value
+      const wasTracking = isTracking.value
+      
+      console.log('📹 カメラ切り替え開始:', {
+        camera: selectedCamera.value.label,
+        wasCalibrated,
+        wasTracking
+      })
+      
       await selectCamera(selectedCamera.value)
       console.log('✅ カメラ選択完了:', selectedCamera.value.label)
+      
+      // ガゼリスナーが活動中だった場合は復旧
+      if (wasTracking || wasCalibrated) {
+        console.log('🔄 ガゼリスナーを復旧中...')
+        setTimeout(() => {
+          const success = setGazeListener(handleGazeData)
+          if (success) {
+            console.log('✅ ガゼリスナー復旧完了')
+            if (wasTracking) {
+              startTracking()
+            }
+          } else {
+            console.log('⚠️ ガゼリスナー復旧は自動リトライ中...')
+          }
+        }, 1500) // カメラ安定化のため1.5秒待機
+      }
+      
     } catch (err) {
+      console.error('❌ カメラ選択エラー:', err)
       error.value = `カメラ選択エラー: ${err.message}`
     }
   }

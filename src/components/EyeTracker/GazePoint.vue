@@ -41,9 +41,22 @@ const props = defineProps({
 
 const gazePoint = ref(null)
 
-// 表示条件
+// 表示条件（キャリブレーション中も確実に表示）
 const shouldShow = computed(() => {
-  return props.showGazePoint && (props.isTracking || props.isCalibrating)
+  const result = props.showGazePoint && (props.isTracking || props.isCalibrating)
+  
+  // デバッグログ（キャリブレーション中の視線ポイント表示確認）
+  if (props.isCalibrating && Math.random() < 0.05) { // 5%でログ
+    console.log('🔍 GazePoint表示状態:', {
+      shouldShow: result,
+      showGazePoint: props.showGazePoint,
+      isTracking: props.isTracking,
+      isCalibrating: props.isCalibrating,
+      gazeData: { x: props.gazeData.x, y: props.gazeData.y }
+    })
+  }
+  
+  return result
 })
 
 // 視線ポイントのスタイル
