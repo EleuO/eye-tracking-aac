@@ -79,6 +79,76 @@
           </div>
         </div>
 
+        <!-- 🎯 完全視線ベースキャリブレーション（革命的！） -->
+        <div class="section">
+          <h3>🎯 視線キャリブレーション</h3>
+          <div class="calibration-controls">
+            <div v-if="!eyeCalibration.isComplete.value" class="calibration-status">
+              <div class="status-message">
+                <span class="status-icon">⚠️</span>
+                未キャリブレーション<br>
+                <small>精度向上のため推奨</small>
+              </div>
+              <button 
+                @click="startCalibration"
+                :disabled="!faceTracker.isTracking.value || eyeCalibration.isCalibrating.value"
+                class="primary-btn calibration-btn"
+              >
+                {{ eyeCalibration.isCalibrating.value ? '⏳ 実行中...' : '🎯 9点キャリブレーション開始' }}
+              </button>
+            </div>
+            
+            <div v-if="eyeCalibration.isComplete.value" class="calibration-complete">
+              <div class="calibration-success">
+                <span class="status-icon">✅</span>
+                キャリブレーション完了！
+              </div>
+              <div class="calibration-accuracy">
+                <div class="accuracy-item">
+                  <strong>総合精度:</strong> {{ Math.round(eyeCalibration.calibrationMatrix.accuracy.overall * 100) }}%
+                </div>
+                <div class="accuracy-item">
+                  <strong>水平精度:</strong> {{ Math.round(eyeCalibration.calibrationMatrix.accuracy.horizontal * 100) }}%
+                </div>
+                <div class="accuracy-item">
+                  <strong>垂直精度:</strong> {{ Math.round(eyeCalibration.calibrationMatrix.accuracy.vertical * 100) }}%
+                </div>
+                <div class="accuracy-item">
+                  <strong>安定性:</strong> {{ Math.round(eyeCalibration.calibrationMatrix.accuracy.stability * 100) }}%
+                </div>
+              </div>
+              <button 
+                @click="recalibrate"
+                :disabled="!faceTracker.isTracking.value"
+                class="secondary-btn"
+              >
+                🔄 再キャリブレーション
+              </button>
+            </div>
+            
+            <div v-if="eyeCalibration.isCalibrating.value" class="calibration-progress">
+              <div class="progress-info">
+                <div class="progress-text">
+                  {{ eyeCalibration.currentCalibrationPoint.value?.label }} ({{ eyeCalibration.currentPoint.value + 1 }}/9)
+                </div>
+                <div class="progress-bar">
+                  <div 
+                    class="progress-fill"
+                    :style="{ width: `${eyeCalibration.progress.value}%` }"
+                  ></div>
+                </div>
+                <div class="progress-percentage">{{ eyeCalibration.progress.value }}%</div>
+              </div>
+              <button 
+                @click="cancelCalibration"
+                class="cancel-btn"
+              >
+                ❌ キャンセル
+              </button>
+            </div>
+          </div>
+        </div>
+
         <!-- 🎯 学習データ収集（革命的プロダクト開発用） -->
         <div class="section">
           <h3>🧠 学習データ収集</h3>
@@ -282,6 +352,85 @@
       </div>
     </div>
 
+    <!-- 🎯 全画面キャリブレーションオーバーレイ -->
+    <div v-if="eyeCalibration.isCalibrating.value" class="calibration-overlay">
+      <div class="calibration-background">
+        <div class="calibration-header">
+          <h2>🎯 視線キャリブレーション</h2>
+          <div class="calibration-instructions">
+            <p>{{ eyeCalibration.currentCalibrationPoint.value?.label }}の赤い円を見つめてください</p>
+            <p class="instruction-detail">円が緑色になるまで視線を固定してください（約3秒）</p>
+          </div>
+          <div class="calibration-progress-header">
+            <span>{{ eyeCalibration.currentPoint.value + 1 }} / 9</span>
+            <div class="progress-bar">
+              <div 
+                class="progress-fill"
+                :style="{ width: `${eyeCalibration.progress.value}%` }"
+              ></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- 9点キャリブレーション表示 -->
+        <div class="calibration-grid">
+          <div 
+            v-for="(point, index) in eyeCalibration.calibrationPoints"
+            :key="point.id"
+            class="calibration-point"
+            :class="{
+              'point-current': index === eyeCalibration.currentPoint.value,
+              'point-completed': index < eyeCalibration.currentPoint.value,
+              'point-pending': index > eyeCalibration.currentPoint.value
+            }"
+            :style="{
+              left: `${point.x * 100}%`,
+              top: `${point.y * 100}%`
+            }"
+            @click="handleCalibrationPointClick(index)"
+          >
+            <div class="point-circle">
+              <div class="point-inner"></div>
+              <div class="point-ring"></div>
+            </div>
+            <div class="point-label">{{ point.label }}</div>
+            <div v-if="index === eyeCalibration.currentPoint.value" class="point-animation">
+              <div class="pulse-ring"></div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- キャリブレーション状態表示 -->
+        <div class="calibration-status-overlay">
+          <div v-if="calibrationSamples > 0" class="sample-counter">
+            収集済みサンプル: {{ calibrationSamples }}/5
+            <div class="sample-progress">
+              <div 
+                class="sample-fill"
+                :style="{ width: `${(calibrationSamples / 5) * 100}%` }"
+              ></div>
+            </div>
+          </div>
+          
+          <div class="calibration-actions">
+            <button 
+              @click="skipCalibrationPoint"
+              class="skip-btn"
+              :disabled="calibrationSamples < 3"
+            >
+              ⏭️ ポイントスキップ ({{ Math.max(0, 3 - calibrationSamples) }}サンプル必要)
+            </button>
+            <button 
+              @click="cancelCalibration"
+              class="cancel-btn"
+            >
+              ❌ キャンセル
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- エラー表示 -->
     <div v-if="error" class="error-overlay">
       <div class="error-content">
@@ -301,6 +450,8 @@ import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from
 import { useOpenCVFaceTracker } from './composables/useOpenCVFaceTracker.js'
 import { useZoneBasedAAC } from './composables/useZoneBasedAAC.js'
 import { useGazeLearningLogger } from './composables/useGazeLearningLogger.js'
+import { useEyeCalibration } from './composables/useEyeCalibration.js'
+import { useEnhancedEyeDetection } from './composables/useEnhancedEyeDetection.js'
 
 // Face Tracker (OpenCV版)
 const faceTracker = useOpenCVFaceTracker()
@@ -310,6 +461,12 @@ const zoneAAC = useZoneBasedAAC(faceTracker)
 
 // 🎯 学習データ収集システム（患者さんのため！）
 const gazeLearner = useGazeLearningLogger()
+
+// 🎯 完全視線ベースキャリブレーションシステム（革命的！）
+const eyeCalibration = useEyeCalibration()
+
+// 🎯 強化された瞳孔検出システム（低画質カメラ対応）
+const enhancedEyeDetection = useEnhancedEyeDetection()
 
 // UI状態
 const showCamera = ref(true)
@@ -322,7 +479,7 @@ const selectedCamera = ref(null)
 const videoElement = ref(null)
 const canvasElement = ref(null)
 
-// 完全に新しい高精度視線ポイント計算
+// 🎯 革命的キャリブレーション対応視線ポイント計算
 const gazePoint = computed(() => {
   if (!faceTracker.faceDetected.value) return null
   
@@ -343,33 +500,47 @@ const gazePoint = computed(() => {
     interfaceRect = interfaceElement.getBoundingClientRect()
   }
   
-  // 頭部姿勢から視線方向への変換（改良版）
-  // yaw: 負の値 = 左向き、正の値 = 右向き
-  // pitch: 負の値 = 上向き、正の値 = 下向き
+  // 🎯 基本的な視線方向計算
+  const normalizedGazeX = Math.max(-1, Math.min(1, headPose.yaw / 35))
+  const normalizedGazeY = Math.max(-1, Math.min(1, headPose.pitch / 25))
   
-  // 視線方向の正規化 (-1 to 1)
-  const normalizedGazeX = Math.max(-1, Math.min(1, headPose.yaw / 35))  // ±35°の範囲
-  const normalizedGazeY = Math.max(-1, Math.min(1, headPose.pitch / 25)) // ±25°の範囲
+  // 🎯 キャリブレーション適用（革命的個人化！）
+  let finalGazeX, finalGazeY, finalConfidence
   
-  // インターフェース領域内での座標計算
-  const gazeX = interfaceRect.left + interfaceRect.width * (0.5 + normalizedGazeX * 0.4)  // 中央±40%の範囲
-  const gazeY = interfaceRect.top + interfaceRect.height * (0.5 + normalizedGazeY * 0.4)
+  if (eyeCalibration.isComplete.value) {
+    // キャリブレーション済み: 高精度補正適用
+    const calibratedGaze = eyeCalibration.applyCalibration(normalizedGazeX, normalizedGazeY)
+    
+    // インターフェース領域内での座標計算（キャリブレーション済み）
+    finalGazeX = interfaceRect.left + interfaceRect.width * calibratedGaze.x
+    finalGazeY = interfaceRect.top + interfaceRect.height * calibratedGaze.y
+    finalConfidence = Math.min(confidence, calibratedGaze.confidence)
+    
+  } else {
+    // 未キャリブレーション: 従来の推定計算
+    finalGazeX = interfaceRect.left + interfaceRect.width * (0.5 + normalizedGazeX * 0.4)
+    finalGazeY = interfaceRect.top + interfaceRect.height * (0.5 + normalizedGazeY * 0.4)
+    finalConfidence = confidence * 0.7 // 未キャリブレーションペナルティ
+  }
   
   // 画面境界内に制限
-  const boundedX = Math.max(20, Math.min(screenWidth - 20, gazeX))
-  const boundedY = Math.max(20, Math.min(screenHeight - 20, gazeY))
+  const boundedX = Math.max(20, Math.min(screenWidth - 20, finalGazeX))
+  const boundedY = Math.max(20, Math.min(screenHeight - 20, finalGazeY))
   
   return {
     x: boundedX,
     y: boundedY,
-    confidence: confidence,
+    confidence: finalConfidence,
     headPose: { ...headPose },
+    calibrated: eyeCalibration.isComplete.value,
+    calibrationAccuracy: eyeCalibration.calibrationMatrix.accuracy.overall,
     debug: {
       normalizedGazeX,
       normalizedGazeY,
       interfaceRect,
-      rawGazeX: gazeX,
-      rawGazeY: gazeY
+      rawGazeX: finalGazeX,
+      rawGazeY: finalGazeY,
+      isCalibrated: eyeCalibration.isComplete.value
     }
   }
 })
@@ -656,6 +827,88 @@ const correctIntention = (zoneIndex) => {
   }
 }
 
+/**
+ * 🎯 キャリブレーション開始（革命的個人化システム）
+ */
+const startCalibration = async () => {
+  console.log('🎯 キャリブレーション開始 - 患者さんのために最高精度を実現！')
+  
+  try {
+    // 保存されたプロファイルの読み込み試行
+    const loaded = await eyeCalibration.loadUserProfile()
+    if (loaded) {
+      console.log('📂 保存済みキャリブレーション読み込み完了')
+      return
+    }
+    
+    // 新規キャリブレーション開始
+    await eyeCalibration.startCalibration()
+    
+  } catch (err) {
+    console.error('❌ キャリブレーション開始エラー:', err)
+    error.value = `キャリブレーション開始失敗: ${err.message}`
+  }
+}
+
+/**
+ * 🎯 再キャリブレーション
+ */
+const recalibrate = async () => {
+  console.log('🔄 再キャリブレーション開始')
+  
+  // 既存データをリセット
+  eyeCalibration.resetCalibrationMatrix()
+  
+  // 新規キャリブレーション開始
+  await startCalibration()
+}
+
+/**
+ * ❌ キャリブレーションキャンセル
+ */
+const cancelCalibration = () => {
+  console.log('❌ キャリブレーション中止')
+  eyeCalibration.cancelCalibration()
+}
+
+/**
+ * 🎯 キャリブレーションポイントクリック処理
+ */
+const handleCalibrationPointClick = (pointIndex) => {
+  if (pointIndex === eyeCalibration.currentPoint.value) {
+    // 現在のポイントがクリックされた場合、次のポイントに進む
+    nextCalibrationPoint()
+  }
+}
+
+/**
+ * ⏭️ キャリブレーションポイントスキップ
+ */
+const skipCalibrationPoint = () => {
+  console.log(`⏭️ ポイント${eyeCalibration.currentPoint.value + 1}をスキップ`)
+  eyeCalibration.nextCalibrationPoint()
+}
+
+/**
+ * ➡️ 次のキャリブレーションポイント
+ */
+const nextCalibrationPoint = () => {
+  const success = eyeCalibration.nextCalibrationPoint()
+  
+  if (!success) {
+    // キャリブレーション完了
+    console.log('🎉 キャリブレーション完了！')
+  }
+}
+
+// 🎯 キャリブレーション用のリアルタイムサンプル数計算
+const calibrationSamples = computed(() => {
+  if (!eyeCalibration.isCalibrating.value) return 0
+  
+  const currentPointData = eyeCalibration.calibrationData.value[eyeCalibration.currentPoint.value]
+  return currentPointData ? currentPointData.length : 0
+})
+
 // ウォッチャー: エラー監視
 watch(() => faceTracker.error.value, (newError) => {
   if (newError) {
@@ -663,9 +916,36 @@ watch(() => faceTracker.error.value, (newError) => {
   }
 })
 
+// 🎯 キャリブレーションデータ収集ウォッチャー
+watch([
+  () => faceTracker.faceDetected.value,
+  () => eyeCalibration.isCalibrating.value,
+  () => gazePoint.value
+], ([faceDetected, isCalibrating, currentGazePoint]) => {
+  if (isCalibrating && faceDetected && currentGazePoint) {
+    // リアルタイムでキャリブレーションデータを収集
+    const sampleCount = eyeCalibration.collectCalibrationData(
+      {
+        x: currentGazePoint.debug.normalizedGazeX,
+        y: currentGazePoint.debug.normalizedGazeY,
+        confidence: currentGazePoint.confidence
+      },
+      faceTracker.faceData
+    )
+    
+    // 十分なサンプルが収集されたら自動的に次のポイントへ
+    if (sampleCount >= 8) {
+      setTimeout(() => {
+        nextCalibrationPoint()
+      }, 500) // 0.5秒待ってから次へ
+    }
+  }
+}, { immediate: true })
+
 // 初期化
 onMounted(async () => {
   console.log('🚀 視線入力AAC アプリケーション開始')
+  console.log('🎗️ 患者さんのための革命的視線追跡システム')
   
   await nextTick()
   await getCameras()
@@ -673,9 +953,27 @@ onMounted(async () => {
   // Face Tracker初期化
   try {
     await faceTracker.initializeOpenCV()
+    console.log('✅ OpenCV初期化完了')
   } catch (err) {
     error.value = `初期化エラー: ${err.message}`
+    console.error('❌ OpenCV初期化失敗:', err)
   }
+  
+  // 🎯 保存されたキャリブレーションプロファイル自動読み込み
+  try {
+    const calibrationLoaded = await eyeCalibration.loadUserProfile()
+    if (calibrationLoaded) {
+      console.log('📂 保存済みキャリブレーション自動読み込み完了')
+      console.log(`🎯 精度: ${Math.round(eyeCalibration.calibrationMatrix.accuracy.overall * 100)}%`)
+    } else {
+      console.log('⚠️ キャリブレーションデータなし - 初回セットアップが必要')
+    }
+  } catch (err) {
+    console.warn('⚠️ キャリブレーション読み込み警告:', err)
+    // キャリブレーション読み込みエラーは致命的ではないので続行
+  }
+  
+  console.log('🎯 アプリケーション準備完了 - 患者さんの視線入力をサポートします！')
 })
 
 // クリーンアップ
@@ -1286,6 +1584,342 @@ input[type="checkbox"] {
   100% { transform: scale(1.05); }
 }
 
+/* 🎯 キャリブレーション関連スタイル */
+.calibration-controls {
+  margin-top: 1rem;
+}
+
+.calibration-status .status-message {
+  text-align: center;
+  padding: 1rem;
+  background: rgba(255, 193, 7, 0.2);
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.calibration-status .status-icon {
+  font-size: 1.5rem;
+  display: block;
+  margin-bottom: 0.5rem;
+}
+
+.calibration-btn {
+  width: 100%;
+  padding: 0.8rem;
+  font-size: 0.9rem;
+  background: linear-gradient(45deg, #ff6b6b, #ee5a24);
+  border: none;
+  border-radius: 8px;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.calibration-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(255, 107, 107, 0.4);
+}
+
+.calibration-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.calibration-complete {
+  text-align: center;
+}
+
+.calibration-success {
+  color: #00ff88;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.calibration-success .status-icon {
+  font-size: 1.5rem;
+  margin-right: 0.5rem;
+}
+
+.calibration-accuracy {
+  background: rgba(0, 255, 136, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.accuracy-item {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.calibration-progress {
+  text-align: center;
+}
+
+.progress-info {
+  margin-bottom: 1rem;
+}
+
+.progress-text {
+  font-weight: bold;
+  margin-bottom: 0.5rem;
+}
+
+.progress-bar {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 0.5rem;
+}
+
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff88, #00d4aa);
+  transition: width 0.3s ease;
+}
+
+.progress-percentage {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+/* 🎯 全画面キャリブレーションオーバーレイ */
+.calibration-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.calibration-background {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  color: white;
+}
+
+.calibration-header {
+  position: absolute;
+  top: 2rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10001;
+}
+
+.calibration-header h2 {
+  margin: 0 0 1rem 0;
+  font-size: 2rem;
+  color: #00ff88;
+}
+
+.calibration-instructions p {
+  margin: 0.5rem 0;
+  font-size: 1.2rem;
+}
+
+.instruction-detail {
+  font-size: 1rem !important;
+  opacity: 0.8;
+}
+
+.calibration-progress-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  justify-content: center;
+  margin-top: 1rem;
+}
+
+.calibration-progress-header .progress-bar {
+  width: 200px;
+}
+
+/* 🎯 キャリブレーションポイント */
+.calibration-grid {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.calibration-point {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  z-index: 10002;
+}
+
+.point-circle {
+  position: relative;
+  width: 60px;
+  height: 60px;
+}
+
+.point-inner {
+  width: 100%;
+  height: 100%;
+  border-radius: 50%;
+  background: #ff4757;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 2;
+}
+
+.point-current .point-inner {
+  background: #ff4757;
+  animation: pulse-current 1.5s ease-in-out infinite;
+}
+
+.point-completed .point-inner {
+  background: #00ff88;
+  transform: scale(0.8);
+}
+
+.point-pending .point-inner {
+  background: #666;
+  opacity: 0.5;
+  transform: scale(0.6);
+}
+
+.point-ring {
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  width: 70px;
+  height: 70px;
+  border: 2px solid rgba(255, 71, 87, 0.5);
+  border-radius: 50%;
+  z-index: 1;
+}
+
+.point-current .point-ring {
+  border-color: #ff4757;
+  animation: ring-pulse 2s ease-in-out infinite;
+}
+
+.point-label {
+  position: absolute;
+  top: 70px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.9rem;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+}
+
+.point-animation {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  width: 80px;
+  height: 80px;
+}
+
+.pulse-ring {
+  width: 100%;
+  height: 100%;
+  border: 3px solid rgba(255, 71, 87, 0.8);
+  border-radius: 50%;
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* 🎯 キャリブレーション状態オーバーレイ */
+.calibration-status-overlay {
+  position: absolute;
+  bottom: 3rem;
+  left: 50%;
+  transform: translateX(-50%);
+  text-align: center;
+  z-index: 10001;
+}
+
+.sample-counter {
+  background: rgba(0, 255, 136, 0.2);
+  padding: 1rem;
+  border-radius: 10px;
+  margin-bottom: 1rem;
+  backdrop-filter: blur(10px);
+}
+
+.sample-progress {
+  width: 200px;
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 3px;
+  overflow: hidden;
+  margin: 0.5rem auto 0;
+}
+
+.sample-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #00ff88, #00d4aa);
+  transition: width 0.3s ease;
+}
+
+.calibration-actions {
+  display: flex;
+  gap: 1rem;
+  justify-content: center;
+}
+
+.skip-btn, .cancel-btn {
+  padding: 0.8rem 1.5rem;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: all 0.3s ease;
+}
+
+.skip-btn {
+  background: #f39c12;
+  color: white;
+}
+
+.skip-btn:disabled {
+  background: #666;
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.cancel-btn {
+  background: #e74c3c;
+  color: white;
+}
+
+.skip-btn:hover:not(:disabled), .cancel-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+}
+
+/* 🎯 キャリブレーションアニメーション */
+@keyframes pulse-current {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.1); }
+  100% { transform: scale(1); }
+}
+
+@keyframes ring-pulse {
+  0% { transform: scale(1); opacity: 1; }
+  100% { transform: scale(1.5); opacity: 0; }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(1); opacity: 0.8; }
+  100% { transform: scale(1.3); opacity: 0; }
+}
+
 @media (max-width: 1200px) {
   .app-main {
     grid-template-columns: 1fr;
@@ -1294,6 +1928,26 @@ input[type="checkbox"] {
   
   .stats-grid {
     grid-template-columns: 1fr;
+  }
+  
+  .calibration-header h2 {
+    font-size: 1.5rem;
+  }
+  
+  .calibration-instructions p {
+    font-size: 1rem;
+  }
+  
+  .point-circle {
+    width: 50px;
+    height: 50px;
+  }
+  
+  .point-ring {
+    width: 60px;
+    height: 60px;
+    top: -5px;
+    left: -5px;
   }
 }
 </style>
