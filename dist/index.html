@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>視線入力式意思伝達装置 (AAC) - Vue3版</title>
+    <meta name="description" content="視線追跡技術を使用した日本語対応の意思伝達支援装置">
+    <meta name="keywords" content="AAC, 視線追跡, 意思伝達, アクセシビリティ, webgazer">
+    
+    <!-- シンプル版AACシステム - 複雑な初期化不要 -->
+    <script>
+        console.log('🚀 Simple AAC System v3.1 - 即座使用可能');
+        console.log('📋 MediaPipe初期化問題を回避するシンプル版');
+        console.log('🎯 マウス・キーボード・タッチで即座利用開始');
+    </script>
+    
+    <!-- PWA Support -->
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#667eea">
+    
+    <!-- iOS PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+    <meta name="apple-mobile-web-app-title" content="視線AAC">
+    
+    <!-- Favicon -->
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="apple-touch-icon" href="/icon-192x192.png">
+    
+    <!-- Preconnect for performance -->
+    <link rel="preconnect" href="https://webgazer.cs.brown.edu">
+    
+    <style>
+        /* 初期ローディング画面 */
+        #loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-family: 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic UI', Arial, sans-serif;
+            z-index: 99999;
+        }
+        
+        #loading h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        
+        #loading .subtitle {
+            font-size: 1.2rem;
+            margin-bottom: 40px;
+            opacity: 0.8;
+        }
+        
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            border-top: 3px solid white;
+            animation: spin 1s linear infinite;
+        }
+        
+        .loading-steps {
+            margin-top: 30px;
+            text-align: center;
+        }
+        
+        .loading-step {
+            margin: 10px 0;
+            opacity: 0.6;
+            transition: opacity 0.3s ease;
+        }
+        
+        .loading-step.active {
+            opacity: 1;
+            color: #3498db;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+  <script type="module" crossorigin src="/eye-tracking-aac/assets/index-HtrQt4ke.js"></script>
+  <link rel="modulepreload" crossorigin href="/eye-tracking-aac/assets/vendor-DiGE_4UQ.js">
+  <link rel="stylesheet" crossorigin href="/eye-tracking-aac/assets/index-BBSug3oh.css">
+</head>
+<body>
+    <!-- 初期ローディング画面 -->
+    <div id="loading">
+        <h1>👁️ 視線入力AAC</h1>
+        <div class="subtitle">シンプル顔検出 + 視線ベース選択システム</div>
+        <div class="spinner"></div>
+        <div class="loading-steps">
+            <div class="loading-step active" id="step-1">📦 Vue3アプリケーション読み込み中...</div>
+            <div class="loading-step" id="step-2">🎯 9ゾーンシステム準備中...</div>
+            <div class="loading-step" id="step-3">👁️ 顔検出システム初期化中...</div>
+            <div class="loading-step" id="step-4">✅ 準備完了！</div>
+        </div>
+    </div>
+
+    <!-- Vue3アプリケーションマウントポイント -->
+    <div id="app"></div>
+
+    <!-- Vue3アプリケーション -->
+
+    <script>
+        // ローディング画面の管理
+        let currentStep = 1;
+        
+        const updateLoadingStep = (step) => {
+            // 前のステップを非アクティブに
+            document.getElementById(`step-${currentStep}`)?.classList.remove('active');
+            
+            // 新しいステップをアクティブに
+            currentStep = step;
+            document.getElementById(`step-${currentStep}`)?.classList.add('active');
+        };
+
+        // Vue3アプリが読み込まれたら
+        window.addEventListener('load', () => {
+            updateLoadingStep(2);
+        });
+
+        // シンプルAACアプリ読み込み待機
+        const checkSimpleApp = setInterval(() => {
+            // Vue3アプリがマウントされたらローディング終了
+            if (document.querySelector('#app .eye-gaze-aac-app')) {
+                updateLoadingStep(2);
+                setTimeout(() => updateLoadingStep(3), 200);
+                setTimeout(() => {
+                    updateLoadingStep(4);
+                    clearInterval(checkSimpleApp);
+                    
+                    // ローディング画面を徐々に非表示
+                    setTimeout(() => {
+                        const loading = document.getElementById('loading');
+                        loading.style.opacity = '0';
+                        loading.style.transition = 'opacity 0.5s ease';
+                        
+                        setTimeout(() => {
+                            loading.style.display = 'none';
+                        }, 500);
+                    }, 300);
+                }, 500);
+            }
+        }, 100);
+
+        // エラーハンドリング
+        window.addEventListener('error', (e) => {
+            console.error('アプリケーションエラー:', e);
+            document.getElementById('loading').innerHTML = `
+                <h1>⚠️ エラーが発生しました</h1>
+                <p style="margin: 20px 0; text-align: center;">
+                    ${e.message || 'アプリケーションの読み込みに失敗しました'}
+                </p>
+                <button onclick="window.location.reload()" 
+                        style="padding: 10px 20px; background: #e74c3c; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                    再読み込み
+                </button>
+            `;
+        });
+
+        // 視線入力AACシステム要件チェック
+        console.log('👁️ 視線入力AACシステム - 顔検出ベース');
+        
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            console.log('⚠️ このブラウザはWebRTCをサポートしていません。カメラ機能が使用できません');
+        } else {
+            console.log('✅ カメラアクセス可能 - 視線追跡機能利用可能');
+        }
+    </script>
+</body>
+</html>
