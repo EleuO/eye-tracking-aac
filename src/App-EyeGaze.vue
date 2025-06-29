@@ -438,16 +438,26 @@ const getCameras = async () => {
 }
 
 /**
- * カメラ変更ハンドラー
+ * カメラ変更ハンドラー（修正版 - USBカメラ対応）
  */
 const handleCameraChange = async () => {
-  if (faceTracker.isTracking.value) {
+  if (!selectedCamera.value) return
+  
+  console.log('📹 カメラ切り替え開始:', selectedCamera.value.label)
+  
+  const wasTracking = faceTracker.isTracking.value
+  
+  // 現在の追跡を停止
+  if (wasTracking) {
     await stopTracking()
   }
   
-  if (selectedCamera.value) {
-    console.log('📹 カメラ変更:', selectedCamera.value.label)
+  // 新しいカメラで追跡を再開
+  if (wasTracking) {
+    await startTracking()
   }
+  
+  console.log('✅ カメラ切り替え完了:', selectedCamera.value.label)
 }
 
 /**
@@ -471,8 +481,12 @@ const startTracking = async () => {
       return
     }
     
-    // Face Tracker開始
-    await faceTracker.startTracking(videoElement.value, canvasElement.value)
+    // Face Tracker開始（選択されたカメラを使用）
+    const cameraConstraints = selectedCamera.value ? {
+      deviceId: { exact: selectedCamera.value.deviceId }
+    } : {}
+    
+    await faceTracker.startTracking(videoElement.value, canvasElement.value, cameraConstraints)
     
     // 視線処理ループ開始
     startGazeProcessing()

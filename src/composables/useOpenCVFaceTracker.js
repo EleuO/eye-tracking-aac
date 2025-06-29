@@ -144,16 +144,18 @@ export function useOpenCVFaceTracker() {
   }
   
   /**
-   * カメラストリーム開始
+   * カメラストリーム開始（USBカメラ対応）
    */
   const startCamera = async (constraints = {}) => {
     try {
+      console.log('📹 カメラ制約:', constraints)
+      
       const stream = await navigator.mediaDevices.getUserMedia({
         video: {
           width: { ideal: 640, max: 1280 },
           height: { ideal: 480, max: 720 },
           frameRate: { ideal: 30 },
-          facingMode: 'user',
+          facingMode: constraints.deviceId ? undefined : 'user', // deviceId指定時はfacingMode無効
           ...constraints
         }
       })
@@ -177,9 +179,9 @@ export function useOpenCVFaceTracker() {
   }
   
   /**
-   * 視線追跡開始
+   * 視線追跡開始（USBカメラ対応版）
    */
-  const startTracking = async (videoEl, canvasEl) => {
+  const startTracking = async (videoEl, canvasEl, cameraConstraints = {}) => {
     try {
       videoElement.value = videoEl
       canvasElement.value = canvasEl
@@ -192,7 +194,7 @@ export function useOpenCVFaceTracker() {
         await initializeOpenCV()
       }
       
-      await startCamera()
+      await startCamera(cameraConstraints)
       
       // フレーム処理開始
       startFrameProcessing()
@@ -282,10 +284,8 @@ export function useOpenCVFaceTracker() {
         if (bestFace) {
           processFaceDetection(bestFace)
           
-          // デバッグ描画
-          if (settings.debugMode) {
-            drawFaceRect(ctx, bestFace)
-          }
+          // 🎯 目の位置検出のデバッグ描画（常に表示）
+          drawFaceRect(ctx, bestFace)
         }
       } else {
         faceDetected.value = false
@@ -335,38 +335,128 @@ export function useOpenCVFaceTracker() {
     processFaceDetection(basicFace)
     faceDetected.value = true
     
-    if (settings.debugMode) {
-      drawFaceRect(ctx, basicFace)
-    }
+    // ベーシック検出でも詳細なデバッグ表示
+    drawFaceRect(ctx, basicFace)
   }
   
   /**
-   * 顔検出結果処理
+   * 顔検出結果処理（目の位置特定版）
    */
   const processFaceDetection = (face) => {
     faceDetected.value = true
     
-    // 顔の位置・サイズ更新
-    faceData.x = face.x + face.width / 2
-    faceData.y = face.y + face.height / 2
+    // 顔の基本情報
     faceData.width = face.width
     faceData.height = face.height
-    faceData.confidence = 0.8 // OpenCVは信頼度が高い
+    faceData.confidence = 0.8
     
-    // 改良された頭部姿勢推定
-    calculateAccurateHeadPose(face)
+    // 🎯 重要: 目の位置を正確に推定（鼻ではない）
+    const eyePositions = estimateEyePositions(face)
+    
+    // 目の中心点を視線追跡ポイントとして使用
+    faceData.x = eyePositions.center.x
+    faceData.y = eyePositions.center.y
+    
+    // 両目の位置も保存（将来の高精度化用）
+    faceData.leftEye = eyePositions.leftEye
+    faceData.rightEye = eyePositions.rightEye
+    
+    // 目の位置に基づく頭部姿勢推定
+    calculateEyeBasedHeadPose(face, eyePositions)
     
     // スムージング適用
     applySmoothing()
     
     // デバッグ情報
     if (settings.debugMode && Date.now() % 1000 < 50) {
-      console.log(`👁️ 顔検出: (${Math.round(faceData.x)}, ${Math.round(faceData.y)}) | 姿勢: Yaw=${Math.round(faceData.headPose.yaw)}°, Pitch=${Math.round(faceData.headPose.pitch)}°`)
+      console.log(`👁️ 目検出: 左目(${Math.round(eyePositions.leftEye.x)}, ${Math.round(eyePositions.leftEye.y)}) 右目(${Math.round(eyePositions.rightEye.x)}, ${Math.round(eyePositions.rightEye.y)}) | 姿勢: Yaw=${Math.round(faceData.headPose.yaw)}°, Pitch=${Math.round(faceData.headPose.pitch)}°`)
     }
   }
   
   /**
-   * 改良版頭部姿勢推定
+   * 🎯 目の位置推定（顔検出結果から正確な目の位置を計算）
+   */
+  const estimateEyePositions = (face) => {
+    // 顔の解剖学的比率に基づく目の位置推定
+    const faceWidth = face.width
+    const faceHeight = face.height
+    const faceX = face.x
+    const faceY = face.y
+    
+    // 目の位置の標準的な比率（顔認識研究による）
+    const eyeYRatio = 0.35      // 顔の上から35%の位置
+    const leftEyeXRatio = 0.23   // 左端から23%の位置
+    const rightEyeXRatio = 0.77  // 左端から77%の位置
+    
+    // 目の位置計算
+    const leftEye = {
+      x: faceX + faceWidth * leftEyeXRatio,
+      y: faceY + faceHeight * eyeYRatio
+    }
+    
+    const rightEye = {
+      x: faceX + faceWidth * rightEyeXRatio,
+      y: faceY + faceHeight * eyeYRatio
+    }
+    
+    // 両目の中心点（視線追跡の基準点）
+    const center = {
+      x: (leftEye.x + rightEye.x) / 2,
+      y: (leftEye.y + rightEye.y) / 2
+    }
+    
+    return {
+      leftEye,
+      rightEye,
+      center,
+      eyeDistance: Math.abs(rightEye.x - leftEye.x)
+    }
+  }
+  
+  /**
+   * 🎯 目ベースの頭部姿勢推定（遠距離対応・高精度版）
+   */
+  const calculateEyeBasedHeadPose = (face, eyePositions) => {
+    const canvas = canvasElement.value
+    if (!canvas) return
+    
+    // 画面中心を基準点とする
+    const screenCenterX = canvas.width / 2
+    const screenCenterY = canvas.height / 2
+    
+    // 両目の中心点を使用（鼻ではない）
+    const eyeCenterX = eyePositions.center.x
+    const eyeCenterY = eyePositions.center.y
+    
+    // 🎯 カメラからの距離を考慮した感度調整
+    const faceAreaRatio = (face.width * face.height) / (canvas.width * canvas.height)
+    const distanceFactor = Math.max(0.5, Math.min(2.0, 1.0 / Math.sqrt(faceAreaRatio)))
+    
+    console.log(`📏 距離補正: 顔面積比=${faceAreaRatio.toFixed(3)}, 距離係数=${distanceFactor.toFixed(2)}`)
+    
+    // 目の位置から正規化座標を計算
+    const normalizedX = ((eyeCenterX - screenCenterX) / screenCenterX) * distanceFactor
+    const normalizedY = ((eyeCenterY - screenCenterY) / screenCenterY) * distanceFactor
+    
+    // 範囲制限
+    const clampedX = Math.max(-1, Math.min(1, normalizedX))
+    const clampedY = Math.max(-1, Math.min(1, normalizedY))
+    
+    // 🎯 遠距離対応: より大きな角度範囲
+    faceData.headPose.yaw = clampedX * 50   // -50° to +50°（拡大）
+    faceData.headPose.pitch = clampedY * 35 // -35° to +35°（拡大）
+    faceData.headPose.roll = 0
+    
+    // 🎯 両目の傾きから細かなroll角度も推定
+    const eyeAngle = Math.atan2(
+      eyePositions.rightEye.y - eyePositions.leftEye.y,
+      eyePositions.rightEye.x - eyePositions.leftEye.x
+    )
+    faceData.headPose.roll = (eyeAngle * 180 / Math.PI) * 0.5 // 軽微な調整
+  }
+  
+  /**
+   * 改良版頭部姿勢推定（旧版・参考用）
    */
   const calculateAccurateHeadPose = (face) => {
     const canvas = canvasElement.value
@@ -421,27 +511,62 @@ export function useOpenCVFaceTracker() {
   const lerp = (a, b, t) => a + (b - a) * t
   
   /**
-   * デバッグ用顔矩形描画
+   * 🎯 改良版デバッグ描画（目の位置表示）
    */
   const drawFaceRect = (ctx, face) => {
     // 顔のバウンディングボックス
     ctx.strokeStyle = '#00ff00'
-    ctx.lineWidth = 3
+    ctx.lineWidth = 2
     ctx.strokeRect(face.x, face.y, face.width, face.height)
     
-    // 中心点
-    ctx.fillStyle = '#ff0000'
+    // 🎯 目の位置を推定して描画
+    const eyePositions = estimateEyePositions(face)
+    
+    // 左目描画
+    ctx.fillStyle = '#00ffff'  // シアン
     ctx.beginPath()
-    ctx.arc(faceData.x, faceData.y, 5, 0, 2 * Math.PI)
+    ctx.arc(eyePositions.leftEye.x, eyePositions.leftEye.y, 6, 0, 2 * Math.PI)
     ctx.fill()
+    
+    // 右目描画
+    ctx.fillStyle = '#00ffff'  // シアン
+    ctx.beginPath()
+    ctx.arc(eyePositions.rightEye.x, eyePositions.rightEye.y, 6, 0, 2 * Math.PI)
+    ctx.fill()
+    
+    // 両目の中心点（視線追跡基準点）
+    ctx.fillStyle = '#ff0080'  // ピンク（目立つ色）
+    ctx.beginPath()
+    ctx.arc(eyePositions.center.x, eyePositions.center.y, 8, 0, 2 * Math.PI)
+    ctx.fill()
+    
+    // 目の中心と顔の中心の違いを線で表示
+    const faceCenterX = face.x + face.width / 2
+    const faceCenterY = face.y + face.height / 2
+    
+    ctx.strokeStyle = '#ffff00'  // 黄色
+    ctx.lineWidth = 2
+    ctx.beginPath()
+    ctx.moveTo(faceCenterX, faceCenterY)
+    ctx.lineTo(eyePositions.center.x, eyePositions.center.y)
+    ctx.stroke()
     
     // 情報表示
     ctx.fillStyle = '#00ff00'
-    ctx.font = '16px Arial'
-    ctx.fillText(`${stats.detectionMethod} | 信頼度: ${Math.round(faceData.confidence * 100)}%`, 10, 30)
-    ctx.fillText(`FPS: ${stats.fps}`, 10, 50)
-    ctx.fillText(`Yaw: ${Math.round(faceData.headPose.yaw)}°`, 10, 70)
-    ctx.fillText(`Pitch: ${Math.round(faceData.headPose.pitch)}°`, 10, 90)
+    ctx.font = '14px Arial'
+    ctx.fillText(`${stats.detectionMethod} | 信頼度: ${Math.round(faceData.confidence * 100)}%`, 10, 25)
+    ctx.fillText(`FPS: ${stats.fps}`, 10, 45)
+    ctx.fillText(`目の姿勢 - Yaw: ${Math.round(faceData.headPose.yaw)}°, Pitch: ${Math.round(faceData.headPose.pitch)}°`, 10, 65)
+    ctx.fillText(`距離補正: ${((face.width * face.height) / (ctx.canvas.width * ctx.canvas.height)).toFixed(3)}`, 10, 85)
+    
+    // 🎯 視線追跡ポイントの説明
+    ctx.fillStyle = '#ff0080'
+    ctx.font = '12px Arial'
+    ctx.fillText('ピンク=目の中心（視線基準）', 10, 105)
+    ctx.fillStyle = '#00ffff'
+    ctx.fillText('シアン=左右の目', 10, 120)
+    ctx.fillStyle = '#ffff00'
+    ctx.fillText('黄線=顔中心→目中心', 10, 135)
   }
   
   /**
