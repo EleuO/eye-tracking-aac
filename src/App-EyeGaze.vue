@@ -260,23 +260,34 @@ const selectedCamera = ref(null)
 const videoElement = ref(null)
 const canvasElement = ref(null)
 
-// 視線ポイント計算
+// 改良版視線ポイント計算（より高感度・高精度）
 const gazePoint = computed(() => {
   if (!faceTracker.faceDetected.value) return null
   
   const headPose = faceTracker.faceData.headPose
+  const confidence = faceTracker.faceData.confidence
   
-  // 頭部姿勢から画面座標を計算
+  // 信頼度が低い場合は無効
+  if (confidence < 0.3) return null
+  
+  // 画面サイズ取得
   const screenWidth = window.innerWidth
   const screenHeight = window.innerHeight
   
-  // 視線方向の推定（頭部姿勢の逆方向）
-  const gazeX = screenWidth / 2 - (headPose.yaw * 8)  // 感度調整
-  const gazeY = screenHeight / 2 - (headPose.pitch * 6)
+  // 改良されたガゼポイント計算
+  // より高い感度とスムーズな動き
+  const gazeX = screenWidth / 2 - (headPose.yaw * 15)  // 感度大幅UP（8 → 15）
+  const gazeY = screenHeight / 2 - (headPose.pitch * 12) // 感度大幅UP（6 → 12）
+  
+  // より自然な範囲制限
+  const boundedX = Math.max(50, Math.min(screenWidth - 50, gazeX))
+  const boundedY = Math.max(50, Math.min(screenHeight - 50, gazeY))
   
   return {
-    x: Math.max(10, Math.min(screenWidth - 10, gazeX)),
-    y: Math.max(10, Math.min(screenHeight - 10, gazeY))
+    x: boundedX,
+    y: boundedY,
+    confidence: confidence,
+    headPose: { ...headPose }
   }
 })
 
@@ -641,14 +652,16 @@ input[type="checkbox"] {
 
 .gaze-point {
   position: absolute;
-  width: 20px;
-  height: 20px;
-  background: radial-gradient(circle, #00ffff 0%, #0080ff 70%, transparent 100%);
+  width: 30px;  /* サイズ拡大 */
+  height: 30px;
+  background: radial-gradient(circle, #ff0080 0%, #ff4040 50%, #ff8080 100%);  /* より目立つ色 */
+  border: 3px solid #ffffff;  /* 白い境界線 */
   border-radius: 50%;
   pointer-events: none;
   z-index: 100;
   transform: translate(-50%, -50%);
-  animation: pulse-gaze 1s ease-in-out infinite;
+  animation: pulse-gaze 0.8s ease-in-out infinite;  /* より速いアニメーション */
+  box-shadow: 0 0 20px rgba(255, 0, 128, 0.6);  /* グロー効果 */
 }
 
 @keyframes pulse-gaze {

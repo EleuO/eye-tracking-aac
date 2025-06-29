@@ -11,12 +11,12 @@ export function useZoneBasedAAC(faceTracker) {
   const selectedZone = ref(null)
   const dwellProgress = ref(0)
   
-  // 9ゾーン設定
+  // 9ゾーン設定（より応答性重視）
   const zoneConfig = reactive({
     gridSize: 3,           // 3x3グリッド
-    dwellTime: 1500,       // ドウェル時間（ms）
-    confidenceThreshold: 0.7,  // 検出信頼度閾値
-    stabilityThreshold: 300,   // 安定性判定時間（ms）
+    dwellTime: 1000,       // ドウェル時間短縮（1500 → 1000ms）
+    confidenceThreshold: 0.4,  // 閾値緩和（0.7 → 0.4）
+    stabilityThreshold: 200,   // 安定性判定短縮（300 → 200ms）
     smoothing: true,       // スムージング有効
     visualFeedback: true   // 視覚フィードバック有効
   })
@@ -99,24 +99,29 @@ export function useZoneBasedAAC(faceTracker) {
     // 頭部姿勢から画面ゾーンをマッピング
     const { yaw, pitch } = faceData.headPose
     
-    // Yaw（左右）→ 列マッピング
+    // Yaw（左右）→ 列マッピング（より敏感に）
     let targetCol = 1 // デフォルト中央
-    if (yaw < -15) {
+    if (yaw < -8) {  // 感度UP（-15 → -8）
       targetCol = 2 // 右を見る → 右列
-    } else if (yaw > 15) {
+    } else if (yaw > 8) { // 感度UP（15 → 8）
       targetCol = 0 // 左を見る → 左列
     }
     
-    // Pitch（上下）→ 行マッピング
+    // Pitch（上下）→ 行マッピング（より敏感に）
     let targetRow = 1 // デフォルト中央
-    if (pitch < -10) {
+    if (pitch < -6) { // 感度UP（-10 → -6）
       targetRow = 0 // 上を見る → 上行
-    } else if (pitch > 10) {
+    } else if (pitch > 6) { // 感度UP（10 → 6）
       targetRow = 2 // 下を見る → 下行
     }
     
     // ゾーンIDを計算
     const zoneId = targetRow * zoneConfig.gridSize + targetCol
+    
+    // デバッグログ（開発時）
+    if (Date.now() % 2000 < 50) { // 2秒に1回
+      console.log(`🎯 ゾーン検出: Yaw=${Math.round(yaw)}°, Pitch=${Math.round(pitch)}°, TargetZone=${zoneId}`)
+    }
     
     return zones.value.find(zone => zone.id === zoneId)
   }
