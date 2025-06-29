@@ -90,7 +90,20 @@
             left: `${gazePoint.x}px`,
             top: `${gazePoint.y}px`
           }"
-        ></div>
+        >
+          <!-- 信頼度表示 -->
+          <div class="gaze-confidence">
+            {{ Math.round(gazePoint.confidence * 100) }}%
+          </div>
+        </div>
+        
+        <!-- デバッグ情報表示 -->
+        <div v-if="gazePoint && faceTracker.settings.debugMode" class="debug-info">
+          <div class="debug-item">頭部姿勢: Yaw={{ Math.round(gazePoint.headPose.yaw) }}°, Pitch={{ Math.round(gazePoint.headPose.pitch) }}°</div>
+          <div class="debug-item">視線座標: ({{ Math.round(gazePoint.x) }}, {{ Math.round(gazePoint.y) }})</div>
+          <div class="debug-item">正規化: X={{ gazePoint.debug.normalizedGazeX.toFixed(2) }}, Y={{ gazePoint.debug.normalizedGazeY.toFixed(2) }}</div>
+          <div class="debug-item">検出方法: {{ faceTracker.stats.detectionMethod }}</div>
+        </div>
 
         <!-- 9ゾーングリッド -->
         <div class="zone-grid">
@@ -240,11 +253,11 @@
 
 <script setup>
 import { ref, reactive, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useSimpleFaceTracker } from './composables/useSimpleFaceTracker.js'
+import { useOpenCVFaceTracker } from './composables/useOpenCVFaceTracker.js'
 import { useZoneBasedAAC } from './composables/useZoneBasedAAC.js'
 
-// Face Tracker (シンプル版)
-const faceTracker = useSimpleFaceTracker()
+// Face Tracker (OpenCV版)
+const faceTracker = useOpenCVFaceTracker()
 
 // Zone-based AAC System
 const zoneAAC = useZoneBasedAAC(faceTracker)
@@ -260,34 +273,55 @@ const selectedCamera = ref(null)
 const videoElement = ref(null)
 const canvasElement = ref(null)
 
-// 改良版視線ポイント計算（より高感度・高精度）
+// 完全に新しい高精度視線ポイント計算
 const gazePoint = computed(() => {
   if (!faceTracker.faceDetected.value) return null
   
   const headPose = faceTracker.faceData.headPose
   const confidence = faceTracker.faceData.confidence
   
-  // 信頼度が低い場合は無効
+  // 信頼度チェック
   if (confidence < 0.3) return null
   
-  // 画面サイズ取得
+  // 画面サイズとインターフェース領域を取得
   const screenWidth = window.innerWidth
   const screenHeight = window.innerHeight
+  const interfaceElement = document.querySelector('.gaze-interface')
   
-  // 改良されたガゼポイント計算
-  // より高い感度とスムーズな動き
-  const gazeX = screenWidth / 2 - (headPose.yaw * 15)  // 感度大幅UP（8 → 15）
-  const gazeY = screenHeight / 2 - (headPose.pitch * 12) // 感度大幅UP（6 → 12）
+  // インターフェース領域のサイズと位置
+  let interfaceRect = { left: 0, top: 0, width: screenWidth, height: screenHeight }
+  if (interfaceElement) {
+    interfaceRect = interfaceElement.getBoundingClientRect()
+  }
   
-  // より自然な範囲制限
-  const boundedX = Math.max(50, Math.min(screenWidth - 50, gazeX))
-  const boundedY = Math.max(50, Math.min(screenHeight - 50, gazeY))
+  // 頭部姿勢から視線方向への変換（改良版）
+  // yaw: 負の値 = 左向き、正の値 = 右向き
+  // pitch: 負の値 = 上向き、正の値 = 下向き
+  
+  // 視線方向の正規化 (-1 to 1)
+  const normalizedGazeX = Math.max(-1, Math.min(1, headPose.yaw / 35))  // ±35°の範囲
+  const normalizedGazeY = Math.max(-1, Math.min(1, headPose.pitch / 25)) // ±25°の範囲
+  
+  // インターフェース領域内での座標計算
+  const gazeX = interfaceRect.left + interfaceRect.width * (0.5 + normalizedGazeX * 0.4)  // 中央±40%の範囲
+  const gazeY = interfaceRect.top + interfaceRect.height * (0.5 + normalizedGazeY * 0.4)
+  
+  // 画面境界内に制限
+  const boundedX = Math.max(20, Math.min(screenWidth - 20, gazeX))
+  const boundedY = Math.max(20, Math.min(screenHeight - 20, gazeY))
   
   return {
     x: boundedX,
     y: boundedY,
     confidence: confidence,
-    headPose: { ...headPose }
+    headPose: { ...headPose },
+    debug: {
+      normalizedGazeX,
+      normalizedGazeY,
+      interfaceRect,
+      rawGazeX: gazeX,
+      rawGazeY: gazeY
+    }
   }
 })
 
@@ -452,7 +486,7 @@ const clearError = () => {
  */
 const retryInitialization = async () => {
   clearError()
-  await faceTracker.initializeFaceDetection()
+  await faceTracker.initializeOpenCV()
 }
 
 /**
@@ -482,7 +516,7 @@ onMounted(async () => {
   
   // Face Tracker初期化
   try {
-    await faceTracker.initializeFaceDetection()
+    await faceTracker.initializeOpenCV()
   } catch (err) {
     error.value = `初期化エラー: ${err.message}`
   }
@@ -652,16 +686,52 @@ input[type="checkbox"] {
 
 .gaze-point {
   position: absolute;
-  width: 30px;  /* サイズ拡大 */
-  height: 30px;
-  background: radial-gradient(circle, #ff0080 0%, #ff4040 50%, #ff8080 100%);  /* より目立つ色 */
-  border: 3px solid #ffffff;  /* 白い境界線 */
+  width: 40px;  /* さらにサイズ拡大 */
+  height: 40px;
+  background: radial-gradient(circle, #ff0080 0%, #ff4040 50%, #ff8080 100%);
+  border: 4px solid #ffffff;
   border-radius: 50%;
   pointer-events: none;
-  z-index: 100;
+  z-index: 1000;  /* より前面に */
   transform: translate(-50%, -50%);
-  animation: pulse-gaze 0.8s ease-in-out infinite;  /* より速いアニメーション */
-  box-shadow: 0 0 20px rgba(255, 0, 128, 0.6);  /* グロー効果 */
+  animation: pulse-gaze 0.6s ease-in-out infinite;
+  box-shadow: 0 0 30px rgba(255, 0, 128, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gaze-confidence {
+  position: absolute;
+  top: -25px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.8);
+  color: white;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: bold;
+  white-space: nowrap;
+}
+
+.debug-info {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  background: rgba(0, 0, 0, 0.8);
+  color: #00ff00;
+  padding: 10px;
+  border-radius: 5px;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  z-index: 999;
+  max-width: 400px;
+}
+
+.debug-item {
+  margin-bottom: 5px;
+  white-space: nowrap;
 }
 
 @keyframes pulse-gaze {
