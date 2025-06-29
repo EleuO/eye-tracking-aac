@@ -32,6 +32,22 @@ jobs:
 
       - name: Build for GitHub Pages
         run: npm run build:github
+        
+      - name: Verify Eye-Gaze System Build
+        run: |
+          echo "🔍 視線入力システムのビルド確認中..."
+          echo "📄 index.htmlの内容確認:"
+          head -20 dist/index.html
+          echo ""
+          echo "🎯 視線入力関連の確認:"
+          if grep -q "Eye-Gaze AAC System\|視線入力AAC\|eye-gaze-aac-app" dist/index.html; then
+            echo "✅ 視線入力システムが正しくビルドされています"
+          else
+            echo "❌ 視線入力システムがビルドされていません！"
+            exit 1
+          fi
+          echo "📦 Assetsファイル確認:"
+          ls -la dist/assets/
 
       - name: Setup Pages
         uses: actions/configure-pages@v4
