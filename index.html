@@ -94,13 +94,13 @@
 <body>
     <!-- 初期ローディング画面 -->
     <div id="loading">
-        <h1>🎯 シンプル視線AAC</h1>
-        <div class="subtitle">即座使用可能版 - 読み込み中...</div>
+        <h1>👁️ 視線入力AAC</h1>
+        <div class="subtitle">シンプル顔検出 + 視線ベース選択システム</div>
         <div class="spinner"></div>
         <div class="loading-steps">
             <div class="loading-step active" id="step-1">📦 Vue3アプリケーション読み込み中...</div>
             <div class="loading-step" id="step-2">🎯 9ゾーンシステム準備中...</div>
-            <div class="loading-step" id="step-3">🎮 マウス・キーボード入力システム初期化中...</div>
+            <div class="loading-step" id="step-3">👁️ 顔検出システム初期化中...</div>
             <div class="loading-step" id="step-4">✅ 準備完了！</div>
         </div>
     </div>
@@ -132,7 +132,7 @@
         // シンプルAACアプリ読み込み待機
         const checkSimpleApp = setInterval(() => {
             // Vue3アプリがマウントされたらローディング終了
-            if (document.querySelector('#app .simple-aac-app')) {
+            if (document.querySelector('#app .eye-gaze-aac-app')) {
                 updateLoadingStep(2);
                 setTimeout(() => updateLoadingStep(3), 200);
                 setTimeout(() => {
@@ -168,13 +168,13 @@
             `;
         });
 
-        // シンプルAACシステム要件チェック
-        console.log('✅ シンプル版はカメラ不要 - マウス・キーボード・タッチで動作');
+        // 視線入力AACシステム要件チェック
+        console.log('👁️ 視線入力AACシステム - 顔検出ベース');
         
         if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            console.log('ℹ️ このブラウザはWebRTCをサポートしていませんが、シンプル版では問題ありません');
+            console.log('⚠️ このブラウザはWebRTCをサポートしていません。カメラ機能が使用できません');
         } else {
-            console.log('ℹ️ 将来的にカメラ機能追加時に使用可能');
+            console.log('✅ カメラアクセス可能 - 視線追跡機能利用可能');
         }
     </script>
 </body>

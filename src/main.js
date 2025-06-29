@@ -3,8 +3,10 @@ import { createApp } from 'vue'
 // import App from './App.vue'  
 // MediaPipe版（複雑 - 初期化に問題）
 // import App from './App-MediaPipe.vue'
-// シンプル版（新）- 即座使用可能・確実動作
-import App from './App-Simple.vue'
+// シンプル版（マウス・キーボードのみ）
+// import App from './App-Simple.vue'
+// 視線入力版（新）- シンプル顔検出 + 視線ベースAAC
+import App from './App-EyeGaze.vue'
 import './assets/css/main.css'
 
 // エラーハンドリング追加
